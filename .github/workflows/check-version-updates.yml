@@ -3,6 +3,7 @@ name: Check for Go and Kubernetes version updates
 on:
   schedule:
     - cron: '0 4 * * *'
+      timezone: 'America/Vancouver'
   workflow_dispatch:
 
 jobs:
