@@ -3,9 +3,10 @@
 // Package createvm creates the CI GCE VM (over the compute API) from the ci-base
 // image — docker/go/kind/kubectl/gh prebaked, so no startup script — and writes
 // its zone to ZONE_OUT for the next workflow step. It does NOT wait or SSH: the
-// run step's SSH connecting is the readiness check. Runs from the cctools scratch
-// image (no gcloud, no bash). Config comes from env vars the workflow sets; the
-// compute SA is a mounted key file (COMPUTE_SA_KEY) or its env var (see ccutil).
+// run step's SSH connecting is the readiness check. Runs from the scratch-utils
+// distroless image (no gcloud, no bash). Config comes from env vars the workflow
+// sets; the compute SA is a mounted key file (COMPUTE_SA_KEY) or its env var
+// (see util).
 package createvm
 
 import (
@@ -16,13 +17,21 @@ import (
 	"strings"
 	"time"
 
-	"github.com/projectcalico/go-build/cctools/ccutil"
-	"github.com/projectcalico/go-build/cctools/gce"
+	"github.com/projectcalico/go-build/scratch-utils/gce"
+	"github.com/projectcalico/go-build/scratch-utils/util"
 )
+
+// createTimeout bounds the whole create, so a compute operation that never
+// reaches DONE fails the step rather than hanging it until the workflow's own
+// timeout. An insert that has not landed in this long is not going to.
+const createTimeout = 10 * time.Minute
 
 // Run executes the createvm subcommand and returns its exit code.
 func Run() int {
-	if err := run(context.Background()); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), createTimeout)
+	defer cancel()
+
+	if err := run(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "createvm: %v\n", err)
 		return 1
 	}
@@ -34,7 +43,7 @@ func run(ctx context.Context) error {
 	project := envOr("GCP_VM_PROJECT", "unique-caldron-775")
 	zoneOut := envOr("ZONE_OUT", "/tmp/vm-zone")
 	// Point ADC at the compute SA (mounted key file, or materialized from its env var).
-	if err := ccutil.SetupComputeADC(); err != nil {
+	if err := util.SetupComputeADC(); err != nil {
 		return err
 	}
 
@@ -60,8 +69,8 @@ func run(ctx context.Context) error {
 		DiskType:    envOr("GOOGLE_VM_DISK_TYPE", "pd-ssd"),
 		DiskSizeGB:  diskGB,
 		// Default to the ci-base custom image (docker/go/kind/kubectl/gh baked in,
-		// built by cloud/kind-rig/vm-image/build-image.sh), so the VM boots ready and
-		// run-kindrig.sh does no tool installs. Override for a stock-ubuntu VM.
+		// built by vm-image/build-image.sh), so the VM boots ready and the job does no
+		// tool installs. Override for a stock-ubuntu VM.
 		ImageFamily:  envOr("GOOGLE_VM_IMAGE_FAMILY", "ci-base"),
 		ImageProject: envOr("GOOGLE_VM_IMAGE_PROJECT", "unique-caldron-775"),
 		MaxRun:       maxRun,
@@ -80,9 +89,9 @@ func run(ctx context.Context) error {
 	if err := os.WriteFile(zoneOut, []byte(zone), 0o644); err != nil {
 		return fmt.Errorf("write zone to %s: %w", zoneOut, err)
 	}
-	// Create-only: readiness is the run-e2e step's job -- it retries SSH until the
+	// Create-only: readiness is the run step's job -- runonvm retries SSH until the
 	// VM is reachable (which it must, to ship + run), so that connect IS the
-	// readiness check. The startup script (docker install) runs meanwhile.
+	// readiness check. The ci-base image needs no startup script.
 	fmt.Printf("[createvm] %s created in %s (zone -> %s)\n", name, zone, zoneOut)
 	return nil
 }

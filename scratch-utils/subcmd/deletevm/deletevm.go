@@ -13,8 +13,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/projectcalico/go-build/cctools/ccutil"
-	"github.com/projectcalico/go-build/cctools/gce"
+	"github.com/projectcalico/go-build/scratch-utils/gce"
+	"github.com/projectcalico/go-build/scratch-utils/util"
 )
 
 // Run executes the deletevm subcommand and returns its exit code. Best-effort:
@@ -33,7 +33,7 @@ func Run() int {
 	// like createvm. The cleanup step injects the SA as an env var (banzai-secrets),
 	// NOT a mounted file -- pointing ADC at a nonexistent /secrets file made every
 	// delete fail auth, leaking VMs to the max-run-duration backstop.
-	if err := ccutil.SetupComputeADC(); err != nil {
+	if err := util.SetupComputeADC(); err != nil {
 		fmt.Fprintf(os.Stderr, "deletevm: %v (leaving to max-run-duration)\n", err)
 		return 0
 	}

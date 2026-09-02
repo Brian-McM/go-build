@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Tigera, Inc. All rights reserved.
 
-// Package ccutil is the Go reimplementation of the cc-utils argoci common-scripts
+// Package util is the Go reimplementation of the cc-utils argoci common-scripts
 // (tigera/cc-utils/argoci-images/common-scripts) that a distroless/scratch image
 // can't run because it has no bash/git/ssh binaries. LocalSecret is createLocalSecret;
 // the SSH/clone equivalents live alongside so the VM-lifecycle binaries are
 // self-sufficient. Slated to move to a shared cc-util folder.
-package ccutil
+package util
 
 import (
 	"fmt"

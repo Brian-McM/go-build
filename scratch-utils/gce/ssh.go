@@ -174,12 +174,14 @@ func (s *SSH) PutData(data []byte, remote string, mode os.FileMode) error {
 	}
 	defer sess.Close()
 	sess.Stdin = bytes.NewReader(data)
+	// Capture the remote's stderr so a failing mkdir/chmod says why.
+	var errBuf bytes.Buffer
+	sess.Stderr = &errBuf
 	// `cat >` reads stdin; the quoting is on paths we control (no user input).
 	cmd := fmt.Sprintf("mkdir -p %q && cat > %q && chmod %o %q",
 		filepath.Dir(remote), remote, mode.Perm(), remote)
-	var errBuf bytes.Buffer
 	if err := sess.Run(cmd); err != nil {
-		return fmt.Errorf("put %s: %v: %s", remote, err, errBuf.String())
+		return fmt.Errorf("put %s: %w: %s", remote, err, strings.TrimSpace(errBuf.String()))
 	}
 	return nil
 }
@@ -205,10 +207,12 @@ func (s *SSH) PutDir(localDir, remoteDir string) error {
 	pr, pw := io.Pipe()
 	sess.Stdin = pr
 	go func() { pw.CloseWithError(tarDir(localDir, pw)) }()
+	var errBuf bytes.Buffer
+	sess.Stderr = &errBuf
 
 	cmd := fmt.Sprintf("mkdir -p %q && tar xzf - -C %q", remoteDir, remoteDir)
 	if err := sess.Run(cmd); err != nil {
-		return fmt.Errorf("put dir %s: %w", remoteDir, err)
+		return fmt.Errorf("put dir %s: %w: %s", remoteDir, err, strings.TrimSpace(errBuf.String()))
 	}
 	return nil
 }

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/projectcalico/go-build/cctools/ccutil"
+	"github.com/projectcalico/go-build/scratch-utils/util"
 )
 
 // Run executes the secret subcommand and returns its exit code.
@@ -17,7 +17,7 @@ func Run() int {
 		fmt.Fprintln(os.Stderr, "usage: secret <ENV_VAR_NAME> <DEST_PATH>")
 		return 2
 	}
-	found, err := ccutil.LocalSecret(os.Args[1], os.Args[2])
+	found, err := util.LocalSecret(os.Args[1], os.Args[2])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "secret: %v\n", err)
 		return 1

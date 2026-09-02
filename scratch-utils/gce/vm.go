@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Tigera, Inc. All rights reserved.
 
-// Package gce creates, waits for, and deletes a GCE VM via the compute API — no
-// gcloud CLI, so the caller can run from a scratch/distroless image. Readiness is
-// reported by the VM's startup script through a guest attribute (see WaitReady),
-// so create needs no SSH.
+// Package gce creates and deletes a GCE VM via the compute API, and drives it over
+// SSH (see ssh.go) — no gcloud CLI, so the caller can run from a scratch/distroless
+// image. Create does not wait for the VM to be usable: DialSSH's retry is the
+// readiness check.
 package gce
 
 import (
@@ -50,7 +50,7 @@ func New(ctx context.Context, project string) (*Client, error) {
 
 // Create inserts the instance in the first zone that accepts it and waits for the
 // insert operation to finish, returning that zone. The VM gets an external IP,
-// cloud-platform scope, guest attributes enabled, and a max-run-duration whose
+// cloud-platform scope, and a max-run-duration whose
 // deadline GCP reclaims the VM at (DELETE) — a leaked-VM backstop independent of
 // any cleanup step.
 func (c *Client) Create(ctx context.Context, cfg Config) (zone string, err error) {

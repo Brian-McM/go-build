@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Tigera, Inc. All rights reserved.
 
 // Package runonvm runs a script on a GCE VM over SSH, with no gcloud -- the
-// generic "runOn: vm" primitive for the cctools scratch image. It ships files and
+// generic "runOn: vm" primitive for the scratch-utils image. It ships files and
 // secrets to the VM, runs a script there (a FILE, never a command string, so
 // nothing has to survive three levels of shell quoting), pulls artifacts back on
 // ANY exit, and exits with the script's own status.
@@ -13,7 +13,7 @@
 // is the equivalent for direct/CLI use.)
 //
 // The VM (its name/zone/project) comes from env, same as createvm/deletevm; the
-// compute SA is materialized by ccutil. Everything job-specific -- which files,
+// compute SA is materialized by util. Everything job-specific -- which files,
 // which secrets, which artifacts -- is a flag, so this stays generic across CI
 // jobs.
 //
@@ -32,9 +32,10 @@ import (
 	"os"
 	"path"
 	"strings"
+	"time"
 
-	"github.com/projectcalico/go-build/cctools/ccutil"
-	"github.com/projectcalico/go-build/cctools/gce"
+	"github.com/projectcalico/go-build/scratch-utils/gce"
+	"github.com/projectcalico/go-build/scratch-utils/util"
 )
 
 type stringList []string
@@ -44,6 +45,12 @@ func (s *stringList) Set(v string) error {
 	*s = append(*s, v)
 	return nil
 }
+
+// setupTimeout bounds the compute-API phase (find the zone, inject the key, dial
+// SSH) so a wedged operation fails the step instead of hanging it. It deliberately
+// does NOT cover running the script -- that is the CI job itself, and it takes as
+// long as it takes.
+const setupTimeout = 10 * time.Minute
 
 // Run executes the runonvm subcommand and returns its exit code.
 func Run() int {
@@ -74,7 +81,7 @@ func run(ctx context.Context) int {
 	name := mustEnv("VM_NAME")
 	project := envOr("GCP_VM_PROJECT", "unique-caldron-775")
 
-	if err := ccutil.SetupComputeADC(); err != nil {
+	if err := util.SetupComputeADC(); err != nil {
 		fmt.Fprintf(os.Stderr, "runonvm: %v\n", err)
 		return 1
 	}
@@ -84,9 +91,14 @@ func run(ctx context.Context) int {
 		return 1
 	}
 
+	// Bounded context for the compute-API phase only; the script run below is
+	// unbounded (see setupTimeout).
+	setupCtx, cancelSetup := context.WithTimeout(ctx, setupTimeout)
+	defer cancelSetup()
+
 	zone := os.Getenv("ZONE")
 	if zone == "" {
-		zone, err = client.FindZone(ctx, name)
+		zone, err = client.FindZone(setupCtx, name)
 		if err != nil || zone == "" {
 			fmt.Fprintf(os.Stderr, "runonvm: could not find zone for %s (set ZONE): %v\n", name, err)
 			return 1
@@ -94,12 +106,13 @@ func run(ctx context.Context) int {
 	}
 
 	fmt.Printf("[runonvm] connecting to %s in %s\n", name, zone)
-	conn, err := client.DialSSH(ctx, zone, name, *user)
+	conn, err := client.DialSSH(setupCtx, zone, name, *user)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "runonvm: %v\n", err)
 		return 1
 	}
 	defer conn.Close()
+	cancelSetup()
 
 	// Pull artifacts back on ANY exit, so a mid-run failure still returns logs.
 	defer func() {
