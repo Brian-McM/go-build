@@ -13,7 +13,14 @@
 set -xeuo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
-GO_VERSION="${GO_VERSION:-1.26.5}"   # keep in sync with the rig go.mod
+# Versions are injected as a preamble by build-image.sh, read from
+# images/calico-go-build/versions.yaml -- the same file the calico/go-build image
+# is built from, so a VM job sees the Go that job would have seen in go-build.
+# Required rather than defaulted: silently baking a stale Go into the image is the
+# exact drift this indirection exists to prevent, so run this via build-image.sh.
+GO_VERSION="${GO_VERSION:?set by build-image.sh from images/calico-go-build/versions.yaml}"
+GO_SHA256="${GO_SHA256:?set by build-image.sh from images/calico-go-build/versions.yaml}"
+GO_BUILD_IMAGE="${GO_BUILD_IMAGE:?set by build-image.sh from images/calico-go-build/versions.yaml}"
 
 APT=(apt-get -o DPkg::Lock::Timeout=600 -y)
 retry() { local n=8; for i in $(seq 1 $n); do "$@" && return 0; echo "retry $i/$n: $*"; sleep 5; done; return 1; }
@@ -35,6 +42,8 @@ systemctl enable docker
 
 # --- go / kind / kubectl / gh (what run-kindrig.sh installs today) ----------
 curl -sSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz
+# Verify against the checksum in versions.yaml, as the go-build Dockerfile does.
+echo "${GO_SHA256}  /tmp/go.tgz" | sha256sum -c -
 rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tgz
 # go + a per-user GOBIN on PATH for interactive + non-interactive shells.
 printf 'export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin\n' > /etc/profile.d/go.sh
@@ -58,13 +67,14 @@ EOF
 # --- pre-pull the heavy CI docker images so jobs skip the pull --------------
 # Baked into the image's docker cache: the kind node image (3 clusters), the
 # calico go-build image (make build-calico-image + the operator build), and
-# registry:2 (the pull-through caches + the local helm registry). POC: tags are
-# hardcoded -- kindest/node from lib/kind DefaultNodeImage, go-build from
-# metadata.mk GO_BUILD_VER; re-run build-image.sh to refresh when they bump.
+# registry:2 (the pull-through caches + the local helm registry). go-build's tag
+# comes from versions.yaml via build-image.sh, so it cannot drift from the image
+# this repo publishes. kindest/node is still hardcoded (it comes from calico's
+# lib/kind DefaultNodeImage); re-run build-image.sh to refresh when it bumps.
 systemctl start docker
 PREPULL_IMAGES=(
   "kindest/node:v1.33.7@sha256:d26ef333bdb2cbe9862a0f7c3803ecc7b4303d8cea8e814b481b09949d353040"
-  "calico/go-build:1.26.5-llvm21.1.8-k8s1.37.0-beta.0-1"
+  "$GO_BUILD_IMAGE"
   "registry:2"
 )
 for img in "${PREPULL_IMAGES[@]}"; do

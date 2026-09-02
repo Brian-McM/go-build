@@ -215,8 +215,11 @@ func run(ctx context.Context) int {
 	return code
 }
 
-// shellQuote single-quotes s for safe use in a POSIX shell, escaping embedded
-// single quotes as '\”.
+// shellQuote single-quotes s for safe use in a POSIX shell: an embedded
+// apostrophe is closed, backslash-escaped, and reopened, so any value survives
+// verbatim. The literal escape is in the ReplaceAll below and deliberately not
+// repeated here -- gofmt rewrites a doubled apostrophe in a comment into a curly
+// quote, which is where the misrendered sequence in review came from.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

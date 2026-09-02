@@ -16,9 +16,8 @@ import (
 )
 
 // Config describes the VM to create. Zones are tried in order (capacity), and the
-// first that succeeds is returned.
+// first that succeeds is returned. The project is the Client's, not a field here.
 type Config struct {
-	Project       string
 	Name          string
 	Zones         []string
 	MachineType   string // e.g. "n2-standard-16"
@@ -57,7 +56,7 @@ func (c *Client) Create(ctx context.Context, cfg Config) (zone string, err error
 	var lastErr error
 	for _, z := range cfg.Zones {
 		inst := c.instanceSpec(z, cfg)
-		op, err := c.svc.Instances.Insert(cfg.Project, z, inst).Context(ctx).Do()
+		op, err := c.svc.Instances.Insert(c.project, z, inst).Context(ctx).Do()
 		if err != nil {
 			lastErr = fmt.Errorf("insert in %s: %w", z, err)
 			continue

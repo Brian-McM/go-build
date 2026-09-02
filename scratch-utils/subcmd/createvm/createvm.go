@@ -62,7 +62,6 @@ func run(ctx context.Context) error {
 	}
 
 	cfg := gce.Config{
-		Project:     project,
 		Name:        name,
 		Zones:       strings.Fields(envOr("GOOGLE_VM_ZONES", "us-central1-a us-central1-b us-central1-c us-central1-f")),
 		MachineType: envOr("GOOGLE_VM_MACHINE_TYPE", "n2-standard-16"),
@@ -98,9 +97,10 @@ func run(ctx context.Context) error {
 
 // parseDiskGB accepts "200GB", "200G", or "200" and returns the GB count.
 func parseDiskGB(s string) (int64, error) {
-	s = strings.TrimSpace(s)
-	s = strings.TrimSuffix(strings.TrimSuffix(strings.ToUpper(s), "GB"), "G")
-	n, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	// Report the value as the caller set it; trimmed is only for parsing.
+	trimmed := strings.TrimSpace(strings.ToUpper(s))
+	trimmed = strings.TrimSuffix(strings.TrimSuffix(trimmed, "GB"), "G")
+	n, err := strconv.ParseInt(strings.TrimSpace(trimmed), 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("GOOGLE_VM_DISK_SIZE %q: want e.g. 200GB: %w", s, err)
 	}

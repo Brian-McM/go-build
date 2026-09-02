@@ -273,8 +273,10 @@ func tarDir(dir string, w io.Writer) error {
 		if err != nil {
 			return err
 		}
-		defer f.Close()
+		// Close per file, not deferred: a deferred Close here would hold every
+		// descriptor open until the whole walk finished.
 		_, err = io.Copy(tw, f)
+		f.Close()
 		return err
 	})
 	if err != nil {
