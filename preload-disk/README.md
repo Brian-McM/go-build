@@ -17,6 +17,20 @@ container images onto it via a secondary disk.
   it spins up a throwaway builder VM, pulls the images onto a data disk in the
   containerd image-streaming layout, snapshots that disk into a GCE image, and
   deletes the builder. Prints the `gcloud` line to attach the result.
+- **`versions.yaml`** — the upstream commit the builder is fetched at.
+
+### Why fetch it instead of importing it
+
+`gke-disk-image-builder` has a perfectly good library API (`imager.Request` /
+`imager.GenerateDiskImage`), but it cannot be added to `go.mod`: the module's
+`go.mod` still declares `github.com/GoogleCloudPlatform/ai-on-gke/gke-disk-image-builder`
+while the code now lives at `github.com/ai-on-gke/tools`, so `go get` at the real
+location fails on a module-path mismatch, and the declared path resolves only to a
+2023 snapshot whose source directory has since been deleted from that repo.
+
+Fetching a pinned commit gets current code and keeps `compute-daisy` and the
+`cloud.google.com/go` stack — about 17 extra modules — out of this repo's
+dependency graph, which matters because `scratch-utils` shares it.
 
 ## Build
 
@@ -36,7 +50,7 @@ PROJECT=<cluster-project> ZONE=us-central1-a \
 | `IMAGE_NAME` | `go-build-preload-<timestamp>` | the exact image name the node pool pins |
 | `CONTAINER_IMAGES` | the argoci `calico/go-build` tag | space-separated refs to preload (each needs a tag or digest) |
 | `DISK_SIZE_GB` | `20` | data-disk size (must hold every preloaded image) |
-| `AI_ON_GKE_REF` | `main` | ai-on-gke ref the builder is fetched at — pin a SHA for reproducibility |
+| `AI_ON_GKE_REF` | pinned in [`versions.yaml`](versions.yaml) | ai-on-gke/tools commit the builder is fetched at. A branch or tag name also works, for testing an upstream change. |
 
 Needs gcloud authed with compute instance/disk/image create+delete and log-bucket
 write in `PROJECT`, a local Go toolchain (`go run ./cli`), and git.

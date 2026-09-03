@@ -18,6 +18,10 @@
 # Takes ~5-8 min (most of it the builder VM pulling the images).
 set -euo pipefail
 
+HERE="$(cd "$(dirname "$0")" && pwd)"
+REPO="$(cd "$HERE/.." && pwd)"
+command -v yq >/dev/null || { echo "yq is required to read the pinned versions" >&2; exit 1; }
+
 PROJECT="${PROJECT:-unique-caldron-775}"
 ZONE="${ZONE:-us-central1-a}"
 # The node pool pins this exact image name in --secondary-boot-disk. Default is
@@ -32,26 +36,31 @@ GCS_PATH="${GCS_PATH:?set GCS_PATH to a gs:// bucket/path for the builder logs}"
 # The default is the go-build image this repo publishes, resolved from
 # images/calico-go-build/versions.yaml by the same helper the release tagging and
 # vm-image/build-image.sh use, so the preloaded tag cannot drift from it.
-HERE="$(cd "$(dirname "$0")" && pwd)"
-REPO="$(cd "$HERE/.." && pwd)"
 if [ -z "${CONTAINER_IMAGES:-}" ]; then
-  command -v yq >/dev/null || { echo "yq is required to resolve the go-build tag" >&2; exit 1; }
   go_build_tag="$("$REPO/hack/generate-version-tag-name.sh" -f "$REPO/images/calico-go-build/versions.yaml")"
   CONTAINER_IMAGES="docker.io/calico/go-build:${go_build_tag}"
 fi
-# ai-on-gke/tools ref the builder is fetched at. Pin a commit SHA for reproducible
-# builds; `main` is the moving default.
-AI_ON_GKE_REF="${AI_ON_GKE_REF:-main}"
+# The ai-on-gke/tools commit the builder is fetched at, pinned in versions.yaml so
+# every run of a given toolchain commit builds the disk with the same builder.
+# Override to test an upstream change; a branch or tag name works too.
+AI_ON_GKE_REF="${AI_ON_GKE_REF:-$(yq -r '.ai-on-gke.ref' "$HERE/versions.yaml")}"
 
 log() { echo "[preload-disk] $*"; }
 
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
 
+# Fetch by ref rather than `clone --branch`: --branch takes only branch and tag
+# names, so it cannot check out the pinned commit (and upstream publishes no tags).
+# init + fetch + checkout FETCH_HEAD accepts a SHA, a branch or a tag alike.
 log "fetching gke-disk-image-builder (ai-on-gke/tools @ ${AI_ON_GKE_REF})"
-git clone --quiet --depth 1 --branch "$AI_ON_GKE_REF" --filter=blob:none --sparse \
-  https://github.com/ai-on-gke/tools.git "$workdir/tools"
+git init -q "$workdir/tools"
+git -C "$workdir/tools" remote add origin https://github.com/ai-on-gke/tools.git
+git -C "$workdir/tools" sparse-checkout init --cone
 git -C "$workdir/tools" sparse-checkout set gke-disk-image-builder
+git -C "$workdir/tools" fetch -q --depth 1 --filter=blob:none origin "$AI_ON_GKE_REF"
+git -C "$workdir/tools" checkout -q FETCH_HEAD
+log "builder at $(git -C "$workdir/tools" rev-parse HEAD)"
 
 args=(
   --project-name="$PROJECT"
