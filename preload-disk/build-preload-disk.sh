@@ -24,11 +24,13 @@ command -v yq >/dev/null || { echo "yq is required to read the pinned versions" 
 
 PROJECT="${PROJECT:-unique-caldron-775}"
 ZONE="${ZONE:-us-central1-a}"
-# The node pool pins this exact image name in --secondary-boot-disk. Default is
-# timestamped: GCE images are immutable and a pool binds one at create time, so a
-# refresh is a NEW image + a pool update, not an in-place change. Override
-# IMAGE_NAME for a stable name if your workflow recreates the pool each time.
-IMAGE_NAME="${IMAGE_NAME:-go-build-preload-$(date +%Y%m%d-%H%M%S)}"
+# The node pool pins this exact image name in --secondary-boot-disk. Named off the
+# go-build release tag, exactly as the go-build images are, so the disk and the
+# go-build image it preloads are matchable by eye (dots become hyphens: GCE names
+# are RFC1035). GCE images are immutable and a pool binds one at create time, so
+# refreshing a pool is still a NEW image + a pool update -- but the new image now
+# has a name that says which release it belongs to.
+IMAGE_NAME="${IMAGE_NAME:-$("$REPO/hack/generate-image-name.sh" -p go-build-preload)}"
 DISK_SIZE_GB="${DISK_SIZE_GB:-20}"
 GCS_PATH="${GCS_PATH:?set GCS_PATH to a gs:// bucket/path for the builder logs}"
 # Images to preload, space-separated. Each MUST carry a tag or digest -- the cache
@@ -70,6 +72,15 @@ args=(
   --disk-size-gb="$DISK_SIZE_GB"
 )
 for img in $CONTAINER_IMAGES; do args+=(--container-image="$img"); done
+
+# Same pre-flight as vm-image: a deterministic name collides on a rebuild of the
+# same release, and finding that out after the builder VM has run is expensive.
+if gcloud compute images describe "$IMAGE_NAME" --project="$PROJECT" >/dev/null 2>&1; then
+  log "image $IMAGE_NAME already exists in $PROJECT -- this release is already built."
+  log "to rebuild it: gcloud compute images delete $IMAGE_NAME --project=$PROJECT"
+  log "or set IMAGE_NAME=<name> to build under a different name."
+  exit 1
+fi
 
 log "building disk image ${IMAGE_NAME} in ${PROJECT}"
 log "preloading: ${CONTAINER_IMAGES}"

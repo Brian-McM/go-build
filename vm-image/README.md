@@ -26,6 +26,35 @@ Re-run any time to pick up newer tool versions — because the image lives in a
 one; no code change. Old images can be pruned later
 (`gcloud compute images list --filter="family=ci-base"`).
 
+## Image naming
+
+Images are named off the go-build release tag, exactly as the go-build images
+are, so a VM image and the toolchain it was built against are matchable by eye:
+
+| | |
+|---|---|
+| go-build image | `calico/go-build:1.27.0-llvm21.1.8-k8s1.37.0` |
+| ci-base VM image | `ci-base-1-27-0-llvm21-1-8-k8s1-37-0` |
+
+`hack/generate-image-name.sh` builds the name. Dots become hyphens because GCE
+resource names are RFC1035 (lowercase, digits, hyphens, 63 max) — the exact,
+un-mangled tag is also attached as a `go-build-tag` label, so you can still look
+an image up by it:
+
+```bash
+gcloud compute images list --filter="labels.go-build-tag=1_27_0-llvm21_1_8-k8s1_37_0"
+```
+
+On a release-tag build the version comes from `$SEMAPHORE_GIT_TAG_NAME`, which is
+the only place the re-release suffix lives — a CVE fix that leaves every compiler
+version untouched reuses the version tag with `-1`, `-2` appended, and
+`generate-version-tag-name.sh` does not emit that. Outside a tag build it falls
+back to the versions file.
+
+Because the name is deterministic rather than timestamped, rebuilding a release
+that already exists is refused up front (before the builder VM is created) rather
+than failing at the image-create step minutes later.
+
 You need `yq`, and gcloud authed as an identity with compute instance + image
 create/delete in `PROJECT`.
 

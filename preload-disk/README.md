@@ -47,7 +47,7 @@ PROJECT=<cluster-project> ZONE=us-central1-a \
 | `PROJECT` | `unique-caldron-775` | where the image (and builder VM) are created — **must be the node pool's project** |
 | `ZONE` | `us-central1-a` | builder VM zone |
 | `GCS_PATH` | *(required)* | `gs://` bucket/path for builder logs |
-| `IMAGE_NAME` | `go-build-preload-<timestamp>` | the exact image name the node pool pins |
+| `IMAGE_NAME` | `go-build-preload-<go-build tag>` | Named off the go-build release tag, as the go-build images are, so the disk and the image it preloads match by eye. Dots become hyphens (GCE names are RFC1035). |
 | `CONTAINER_IMAGES` | the argoci `calico/go-build` tag | space-separated refs to preload (each needs a tag or digest) |
 | `DISK_SIZE_GB` | `20` | data-disk size (must hold every preloaded image) |
 | `AI_ON_GKE_REF` | pinned in [`versions.yaml`](versions.yaml) | ai-on-gke/tools commit the builder is fetched at. A branch or tag name also works, for testing an upstream change. |

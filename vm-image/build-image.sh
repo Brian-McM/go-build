@@ -17,7 +17,6 @@ PROJECT="${PROJECT:-unique-caldron-775}"
 ZONE="${ZONE:-us-central1-a}"
 FAMILY="${FAMILY:-ci-base}"
 BUILDER="${BUILDER:-ci-img-builder-$$}"
-IMAGE="${IMAGE:-${FAMILY}-$(date +%Y%m%d-%H%M%S)}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
 
@@ -37,6 +36,24 @@ GO_BUILD_IMAGE="${GO_BUILD_IMAGE:-calico/go-build:$("$REPO/hack/generate-version
 # kubectl tracks the same k8s release the go-build image is cut against.
 KUBECTL_VERSION="${KUBECTL_VERSION:-v$(yq -r '.kubernetes.version' "$VERSIONS")}"
 log "go $GO_VERSION, kubectl $KUBECTL_VERSION, prepulling $GO_BUILD_IMAGE (from images/calico-go-build/versions.yaml)"
+
+# Named off the go-build release tag, exactly as the go-build images are, so a VM
+# image and the toolchain it was built against are matchable by eye (dots become
+# hyphens: GCE names are RFC1035). Deterministic, not timestamped -- one release
+# builds one image, and a re-release carries its own -N suffix in the tag.
+IMAGE="${IMAGE:-$("$REPO/hack/generate-image-name.sh" -p "$FAMILY" -f "$VERSIONS")}"
+log "image name: $IMAGE (family $FAMILY)"
+
+# Fail before spending 4 minutes on a builder VM, not after: GCE image names are
+# unique per project, and a deterministic name means a rebuild of the same release
+# collides. Re-releases get their own -N tag, so a collision means this release's
+# image already exists.
+if gcloud compute images describe "$IMAGE" --project="$PROJECT" >/dev/null 2>&1; then
+  log "image $IMAGE already exists in $PROJECT -- this release is already built."
+  log "to rebuild it: gcloud compute images delete $IMAGE --project=$PROJECT"
+  log "or set IMAGE=<name> to build under a different name."
+  exit 1
+fi
 
 # kind and gh have no entry in the go-build versions file, so they are pinned in
 # ours. Everything is pinned deliberately: an image build must be reproducible from
@@ -98,8 +115,12 @@ gcloud --quiet compute ssh "ubuntu@$BUILDER" --project="$PROJECT" --zone="$ZONE"
 log "stopping builder for a consistent disk"
 gcloud --quiet compute instances stop "$BUILDER" --project="$PROJECT" --zone="$ZONE"
 
+# The go-build tag also goes on as a label: the image NAME has dots rewritten to
+# hyphens for RFC1035, so the label is where the exact tag survives for lookup
+# (gcloud compute images list --filter="labels.go-build-tag=<tag>").
 log "creating image $IMAGE in family $FAMILY"
 gcloud compute images create "$IMAGE" --project="$PROJECT" \
-  --source-disk="$BUILDER" --source-disk-zone="$ZONE" --family="$FAMILY"
+  --source-disk="$BUILDER" --source-disk-zone="$ZONE" --family="$FAMILY" \
+  --labels="go-build-tag=$(echo "$GO_BUILD_IMAGE" | sed 's|.*:||; s|\.|_|g')"
 
 log "done: image $IMAGE (family $FAMILY, project $PROJECT). createvm: GOOGLE_VM_IMAGE_PROJECT=$PROJECT GOOGLE_VM_IMAGE_FAMILY=$FAMILY"
