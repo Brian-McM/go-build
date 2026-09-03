@@ -74,10 +74,11 @@ args=(
 for img in $CONTAINER_IMAGES; do args+=(--container-image="$img"); done
 
 # Same pre-flight and the same release/branch split as vm-image (see the comment
-# there). One extra caution here: a node pool pins this exact image name in
-# --secondary-boot-disk, so replacing a branch image deletes something a pool may
-# still reference. Release images are never replaced, which is the case that
-# matters for a pool pinned to a release.
+# there). A node pool pins this exact image name in --secondary-boot-disk, but it
+# stores the resource PATH, not an image id, so deleting and recreating under the
+# same name leaves the pool config valid. Replacing is therefore safe for the only
+# thing that should ever pin a branch image -- a test pool -- and release images
+# are never replaced, which is what a real pool pins.
 if gcloud compute images describe "$IMAGE_NAME" --project="$PROJECT" >/dev/null 2>&1; then
   if [ "${SEMAPHORE_GIT_REF_TYPE:-}" = "tag" ]; then
     log "image $IMAGE_NAME already exists in $PROJECT -- this release is already built."
@@ -86,8 +87,10 @@ if gcloud compute images describe "$IMAGE_NAME" --project="$PROJECT" >/dev/null 
     exit 1
   fi
   log "replacing existing branch image $IMAGE_NAME"
-  log "WARNING: if a node pool pins $IMAGE_NAME as its secondary boot disk, it"
-  log "         loses that disk until this build finishes."
+  log "note: a pool pinning $IMAGE_NAME keeps working -- the disk is attached at"
+  log "      node creation, so existing nodes already have their copy. Only nodes"
+  log "      created before this build finishes miss the cache. Pin a release-named"
+  log "      image for anything that is not a test pool."
   gcloud --quiet compute images delete "$IMAGE_NAME" --project="$PROJECT"
 fi
 
