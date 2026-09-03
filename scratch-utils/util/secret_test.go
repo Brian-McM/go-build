@@ -23,7 +23,7 @@ func TestLocalSecretWritesModeAndContent(t *testing.T) {
 	if string(got) != "s3cr3t" {
 		t.Errorf("content = %q, want %q", got, "s3cr3t")
 	}
-	// A secret readable by anyone but the owner would defeat the point.
+	// Readable by anyone but the owner would defeat the point.
 	fi, err := os.Stat(dest)
 	if err != nil {
 		t.Fatal(err)
@@ -33,8 +33,8 @@ func TestLocalSecretWritesModeAndContent(t *testing.T) {
 	}
 }
 
-// An unset var is a no-op, not an error -- the caller decides whether a missing
-// secret is fatal (that is what MustLocalSecret is for).
+// An unset var is a no-op, not an error: the caller decides whether that is fatal,
+// which is what MustLocalSecret is for.
 func TestLocalSecretMissingVarIsNoOp(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "secret")
 	found, err := LocalSecret("TEST_SECRET_VAR_DEFINITELY_UNSET", dest)

@@ -13,8 +13,8 @@ import (
 	"testing"
 )
 
-// tarDir and untar are the two halves of PutDir/GetDir; a tree that survives both
-// unchanged is the whole contract.
+// tarDir and untar are the two halves of PutDir/GetDir: a tree that survives both
+// unchanged is the contract.
 func TestTarDirUntarRoundTrip(t *testing.T) {
 	src := t.TempDir()
 	files := map[string]string{
@@ -53,8 +53,7 @@ func TestTarDirUntarRoundTrip(t *testing.T) {
 	}
 }
 
-// GetDir untars whatever the remote sends. A remote that emits ../ entries must
-// not be able to write outside the destination.
+// GetDir untars whatever the remote sends; ../ entries must not escape destDir.
 func TestUntarRejectsPathEscape(t *testing.T) {
 	for _, name := range []string{
 		"../escaped.txt",
@@ -63,7 +62,7 @@ func TestUntarRejectsPathEscape(t *testing.T) {
 		"/absolute.txt",
 	} {
 		dst := t.TempDir()
-		// A sibling of dst is where a successful escape would land.
+		// Where a successful escape would land.
 		outside := filepath.Join(filepath.Dir(dst), "escaped.txt")
 		_ = os.Remove(outside)
 
@@ -72,16 +71,16 @@ func TestUntarRejectsPathEscape(t *testing.T) {
 			os.Remove(outside)
 			t.Fatalf("%q escaped the destination directory", name)
 		}
-		// An absolute path is cleaned into the destination rather than rejected;
-		// either outcome is safe, so only require that nothing escaped.
+		// An absolute path is cleaned into destDir rather than rejected; both are
+		// safe, so only require that nothing escaped.
 		if err != nil && !strings.Contains(err.Error(), "escapes dest") {
 			t.Errorf("%q: unexpected error %v", name, err)
 		}
 	}
 }
 
-// A missing remote dir makes GetDir's `cd ... || true` produce nothing at all.
-// That is the normal "no artifacts this run" case, not a failure.
+// A missing remote dir makes GetDir's `cd ... || true` emit nothing -- the normal
+// "no artifacts this run" case, not a failure.
 func TestUntarEmptyStreamIsNotAnError(t *testing.T) {
 	dst := t.TempDir()
 	if err := untar(bytes.NewReader(nil), dst); err != nil {
@@ -100,8 +99,8 @@ func TestUntarCreatesDestination(t *testing.T) {
 	}
 }
 
-// tarWith builds a gzipped tar holding one regular file at the given (possibly
-// hostile) name -- archive/tar writes the name verbatim, which is the point.
+// tarWith writes one file at the given (possibly hostile) name; archive/tar emits
+// it verbatim, which is the point.
 func tarWith(t *testing.T, name, content string) []byte {
 	t.Helper()
 	var buf bytes.Buffer

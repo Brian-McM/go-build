@@ -17,7 +17,6 @@ bin/semvalidator-$(ARCH): semvalidator/main.go
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) \
 		go build -o bin/semvalidator-$(ARCH) -v -buildvcs=false -ldflags "-s -w" semvalidator/main.go
 
-# scratch-utils: the single CI VM binary (createvm/deletevm/secret/runonvm subcommands).
 # Unlike the single-file binaries above, this one spans ../scratch-utils/, so list
 # every .go file it compiles -- otherwise an incremental build ships a stale binary.
 SCRATCH_UTILS_SRCS = $(shell find scratch-utils ../scratch-utils -name '*.go')

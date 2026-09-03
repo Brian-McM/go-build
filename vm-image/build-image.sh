@@ -22,12 +22,9 @@ REPO="$(cd "$HERE/.." && pwd)"
 
 log() { echo "[build-image] $*"; }
 
-# The VM's toolchain tracks the go-build image, not this repo's go.mod: a job that
-# runs on the VM is the same job that would have run in calico/go-build, so it must
-# see the same Go. images/calico-go-build/versions.yaml is the single source of
-# truth for both, and hack/generate-version-tag-name.sh composes the image tag from
-# it exactly as the release tagging does -- so bumping versions.yaml and re-running
-# this script is all it takes to keep the two in step.
+# The VM's toolchain tracks the go-build image, not this repo's go.mod: a job on
+# the VM would otherwise have run inside calico/go-build, so it must see the same
+# Go. Bump versions.yaml and re-run to keep the two in step.
 VERSIONS="$REPO/images/calico-go-build/versions.yaml"
 command -v yq >/dev/null || { echo "yq is required to read $VERSIONS" >&2; exit 1; }
 GO_VERSION="${GO_VERSION:-$("$REPO/hack/generate-version-tag-name.sh" -f "$VERSIONS" -g)}"
@@ -37,21 +34,17 @@ GO_BUILD_IMAGE="${GO_BUILD_IMAGE:-calico/go-build:$("$REPO/hack/generate-version
 KUBECTL_VERSION="${KUBECTL_VERSION:-v$(yq -r '.kubernetes.version' "$VERSIONS")}"
 log "go $GO_VERSION, kubectl $KUBECTL_VERSION, prepulling $GO_BUILD_IMAGE (from images/calico-go-build/versions.yaml)"
 
-# Named off the go-build release tag, exactly as the go-build images are, so a VM
-# image and the toolchain it was built against are matchable by eye (dots become
-# hyphens: GCE names are RFC1035). Deterministic, not timestamped -- one release
-# builds one image, and a re-release carries its own -N suffix in the tag.
+# Named off the go-build release tag, as the go-build images are, so a VM image and
+# its toolchain match by eye. See hack/generate-image-name.sh.
 IMAGE="${IMAGE:-$("$REPO/hack/generate-image-name.sh" -p "$FAMILY" -f "$VERSIONS")}"
 log "image name: $IMAGE (family $FAMILY)"
 
 # GCE image names are unique per project, so a deterministic name collides on a
-# rebuild -- checked here, before spending four minutes on a builder VM rather
-# than failing at the image-create step. What a collision MEANS depends on the
-# trigger, the same split calico/go-build makes between its tags:
-#   release tag -- immutable. A collision means this release is already built.
+# rebuild. Check now, not after four minutes of builder VM. What a collision means
+# depends on the trigger, the same split calico/go-build makes:
+#   release tag -- immutable; it is already built.
 #   branch      -- the moving "latest build of this branch", like the
-#                  calico/go-build:<branch> docker tag. Replace it; GCE names are
-#                  unique, so replacing means deleting first.
+#                  calico/go-build:<branch> tag. Replace, which means delete first.
 if gcloud compute images describe "$IMAGE" --project="$PROJECT" >/dev/null 2>&1; then
   if [ "${SEMAPHORE_GIT_REF_TYPE:-}" = "tag" ]; then
     log "image $IMAGE already exists in $PROJECT -- this release is already built."
@@ -63,17 +56,16 @@ if gcloud compute images describe "$IMAGE" --project="$PROJECT" >/dev/null 2>&1;
   gcloud --quiet compute images delete "$IMAGE" --project="$PROJECT"
 fi
 
-# kind and gh have no entry in the go-build versions file, so they are pinned in
-# ours. Everything is pinned deliberately: an image build must be reproducible from
-# a commit, which "latest"/stable.txt is not.
+# kind and gh have no entry in the go-build versions file, so they live in ours.
+# All pinned: an image build must be reproducible from a commit.
 VM_VERSIONS="$HERE/versions.yaml"
 KIND_VERSION="${KIND_VERSION:-$(yq -r '.kind.version' "$VM_VERSIONS")}"
 KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-$(yq -r '.kind.node_image' "$VM_VERSIONS")}"
 GH_VERSION="${GH_VERSION:-$(yq -r '.gh.version' "$VM_VERSIONS")}"
 log "kind $KIND_VERSION (node $KIND_NODE_IMAGE), gh $GH_VERSION (from vm-image/versions.yaml)"
 
-# provision.sh runs on the builder as its startup-script, where it cannot read this
-# repo -- so bake the versions in as a preamble rather than hardcoding them there.
+# provision.sh runs as the builder's startup-script, where it cannot read this
+# repo, so bake the versions in as a preamble.
 STARTUP="$(mktemp)"
 {
   echo '#!/usr/bin/env bash'
@@ -123,9 +115,8 @@ gcloud --quiet compute ssh "ubuntu@$BUILDER" --project="$PROJECT" --zone="$ZONE"
 log "stopping builder for a consistent disk"
 gcloud --quiet compute instances stop "$BUILDER" --project="$PROJECT" --zone="$ZONE"
 
-# The go-build tag also goes on as a label: the image NAME has dots rewritten to
-# hyphens for RFC1035, so the label is where the exact tag survives for lookup
-# (gcloud compute images list --filter="labels.go-build-tag=<tag>").
+# The name has dots rewritten for RFC1035, so the label is where the exact tag
+# survives: images list --filter="labels.go-build-tag=<tag>".
 log "creating image $IMAGE in family $FAMILY"
 gcloud compute images create "$IMAGE" --project="$PROJECT" \
   --source-disk="$BUILDER" --source-disk-zone="$ZONE" --family="$FAMILY" \

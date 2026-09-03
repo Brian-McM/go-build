@@ -1,12 +1,10 @@
 // Copyright (c) 2026 Tigera, Inc. All rights reserved.
 
-// Package createvm creates the CI GCE VM (over the compute API) from the ci-base
-// image — docker/go/kind/kubectl/gh prebaked, so no startup script — and writes
-// its zone to ZONE_OUT for the next workflow step. It does NOT wait or SSH: the
-// run step's SSH connecting is the readiness check. Runs from the scratch-utils
-// distroless image (no gcloud, no bash). Config comes from env vars the workflow
-// sets; the compute SA is a mounted key file (COMPUTE_SA_KEY) or its env var
-// (see util).
+// Package createvm creates the CI GCE VM from the ci-base image — docker, go,
+// kind, kubectl and gh prebaked, so no startup script — and writes its zone to
+// ZONE_OUT for the next workflow step. It does not wait or SSH; the run step's
+// connect is the readiness check. Config comes from env vars the workflow sets;
+// the compute SA is a mounted key file (COMPUTE_SA_KEY) or its env var (see util).
 package createvm
 
 import (
@@ -21,9 +19,8 @@ import (
 	"github.com/projectcalico/go-build/scratch-utils/util"
 )
 
-// createTimeout bounds the whole create, so a compute operation that never
-// reaches DONE fails the step rather than hanging it until the workflow's own
-// timeout. An insert that has not landed in this long is not going to.
+// createTimeout bounds the whole create: an operation that never reaches DONE
+// should fail the step, not hang it until the workflow's own timeout.
 const createTimeout = 10 * time.Minute
 
 // Run executes the createvm subcommand and returns its exit code.
@@ -70,9 +67,8 @@ func run(ctx context.Context) error {
 		MachineType: envOr("GOOGLE_VM_MACHINE_TYPE", "n2-standard-16"),
 		DiskType:    envOr("GOOGLE_VM_DISK_TYPE", "pd-ssd"),
 		DiskSizeGB:  diskGB,
-		// Default to the ci-base custom image (docker/go/kind/kubectl/gh baked in,
-		// built by vm-image/build-image.sh), so the VM boots ready and the job does no
-		// tool installs. Override for a stock-ubuntu VM.
+		// ci-base has the toolchain baked in (built by vm-image/build-image.sh), so
+		// the VM boots ready and the job does no installs. Override for stock Ubuntu.
 		ImageFamily:  envOr("GOOGLE_VM_IMAGE_FAMILY", "ci-base"),
 		ImageProject: envOr("GOOGLE_VM_IMAGE_PROJECT", "unique-caldron-775"),
 		MaxRun:       maxRun,
@@ -91,16 +87,15 @@ func run(ctx context.Context) error {
 	if err := os.WriteFile(zoneOut, []byte(zone), 0o644); err != nil {
 		return fmt.Errorf("write zone to %s: %w", zoneOut, err)
 	}
-	// Create-only: readiness is the run step's job -- runonvm retries SSH until the
-	// VM is reachable (which it must, to ship + run), so that connect IS the
-	// readiness check. The ci-base image needs no startup script.
+	// Readiness is the run step's job: runonvm must connect to ship and run anyway,
+	// so that connect is the check.
 	fmt.Printf("[createvm] %s created in %s (zone -> %s)\n", name, zone, zoneOut)
 	return nil
 }
 
 // parseDiskGB accepts "200GB", "200G", or "200" and returns the GB count.
 func parseDiskGB(s string) (int64, error) {
-	// Report the value as the caller set it; trimmed is only for parsing.
+	// Errors quote s, not trimmed: report what the caller actually set.
 	trimmed := strings.TrimSpace(strings.ToUpper(s))
 	trimmed = strings.TrimSuffix(strings.TrimSuffix(trimmed, "GB"), "G")
 	n, err := strconv.ParseInt(strings.TrimSpace(trimmed), 10, 64)

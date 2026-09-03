@@ -34,9 +34,8 @@ func TestParseDiskGBRejectsGarbage(t *testing.T) {
 	}
 }
 
-// The error has to name the value the operator actually set, not the parser's
-// trimmed-and-uppercased leftovers -- that is what makes a misconfigured env var
-// findable from a CI log.
+// The error must name the value the operator set, not the parser's leftovers --
+// that is what makes a bad env var findable from a CI log.
 func TestParseDiskGBErrorQuotesOriginalInput(t *testing.T) {
 	_, err := parseDiskGB(" 200GBx ")
 	if err == nil {

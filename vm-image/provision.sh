@@ -1,23 +1,17 @@
 #!/usr/bin/env bash
 # Copyright (c) 2026 Tigera, Inc. All rights reserved.
 #
-# Provisioner for the general CI VM base image (family: ci-base) -- for ANY CI
-# job that needs docker/go/kubectl/etc on a GCE VM, not just the kind rig. Runs
-# once, as the startup-script of a throwaway builder VM; the builder's disk is
-# then snapshotted into a reusable image (see README.md). Bakes in the common CI
-# toolchain so a VM created from it boots ready and jobs do zero installs -- the
-# whole point is to move the per-run install time to build time.
+# Provisioner for the ci-base VM image -- any CI job needing docker/go/kubectl on
+# a GCE VM, not just the kind rig. Runs once as a throwaway builder's
+# startup-script; its disk is then snapshotted into a reusable image (README.md).
+# Baking the toolchain moves per-run install time to build time.
 #
-# It publishes /var/run/provision-done when finished, which the image-build script
-# polls over SSH before stopping the builder.
+# Publishes /var/run/provision-done when done, which build-image.sh polls.
 set -xeuo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
-# Versions are injected as a preamble by build-image.sh, read from
-# images/calico-go-build/versions.yaml -- the same file the calico/go-build image
-# is built from, so a VM job sees the Go that job would have seen in go-build.
-# Required rather than defaulted: silently baking a stale Go into the image is the
-# exact drift this indirection exists to prevent, so run this via build-image.sh.
+# Injected as a preamble by build-image.sh. Required, not defaulted: silently
+# baking a stale Go is the drift this indirection exists to prevent.
 GO_VERSION="${GO_VERSION:?set by build-image.sh from images/calico-go-build/versions.yaml}"
 GO_SHA256="${GO_SHA256:?set by build-image.sh from images/calico-go-build/versions.yaml}"
 GO_BUILD_IMAGE="${GO_BUILD_IMAGE:?set by build-image.sh from images/calico-go-build/versions.yaml}"
@@ -47,7 +41,7 @@ systemctl enable docker
 
 # --- go / kind / kubectl / gh (all pinned; see the preamble above) -----------
 curl -sSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz
-# Verify against the checksum in versions.yaml, as the go-build Dockerfile does.
+# Checksum from versions.yaml, as the go-build Dockerfile does.
 echo "${GO_SHA256}  /tmp/go.tgz" | sha256sum -c -
 rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tgz
 # go + a per-user GOBIN on PATH for interactive + non-interactive shells.
@@ -69,11 +63,9 @@ fs.inotify.max_user_watches=524288
 EOF
 
 # --- pre-pull the heavy CI docker images so jobs skip the pull --------------
-# Baked into the image's docker cache: the kind node image (3 clusters), the
-# calico go-build image (make build-calico-image + the operator build), and
-# registry:2 (the pull-through caches + the local helm registry). Both tags are
-# injected by build-image.sh -- go-build from images/calico-go-build/versions.yaml,
-# the kind node image from vm-image/versions.yaml -- so neither can drift.
+# Into the image's docker cache: the kind node image (3 clusters), go-build (the
+# calico + operator builds), registry:2 (pull-through caches, local helm registry).
+# Both tags are injected by build-image.sh, so neither can drift.
 systemctl start docker
 PREPULL_IMAGES=(
   "$KIND_NODE_IMAGE"

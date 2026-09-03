@@ -1,9 +1,8 @@
 // Copyright (c) 2026 Tigera, Inc. All rights reserved.
 
-// Package gce creates and deletes a GCE VM via the compute API, and drives it over
-// SSH (see ssh.go) — no gcloud CLI, so the caller can run from a scratch/distroless
-// image. Create does not wait for the VM to be usable: DialSSH's retry is the
-// readiness check.
+// Package gce creates and deletes a GCE VM via the compute API and drives it over
+// SSH (ssh.go) — no gcloud, so callers can run from a distroless image. Create
+// does not wait for the VM to be usable; DialSSH's retry is the readiness check.
 package gce
 
 import (
@@ -47,11 +46,10 @@ func New(ctx context.Context, project string) (*Client, error) {
 	return &Client{svc: svc, project: project}, nil
 }
 
-// Create inserts the instance in the first zone that accepts it and waits for the
-// insert operation to finish, returning that zone. The VM gets an external IP,
-// cloud-platform scope, and a max-run-duration whose
-// deadline GCP reclaims the VM at (DELETE) — a leaked-VM backstop independent of
-// any cleanup step.
+// Create inserts the instance in the first zone that accepts it, waits for the
+// insert to finish, and returns that zone. The VM gets an external IP,
+// cloud-platform scope, and a max-run-duration GCP reclaims it at — a leaked-VM
+// backstop independent of any cleanup step.
 func (c *Client) Create(ctx context.Context, cfg Config) (zone string, err error) {
 	var lastErr error
 	for _, z := range cfg.Zones {
@@ -96,8 +94,8 @@ func (c *Client) instanceSpec(zone string, cfg Config) *compute.Instance {
 			Scopes: []string{compute.CloudPlatformScope},
 		}},
 	}
-	// A startup script is optional: the ci-base image already has docker etc., so
-	// createvm passes none. Only set it for a stock image that needs provisioning.
+	// Optional: the ci-base image is already provisioned, so createvm passes none.
+	// Only set it for a stock image.
 	if cfg.StartupScript != "" {
 		inst.Metadata = &compute.Metadata{Items: []*compute.MetadataItems{
 			{Key: "startup-script", Value: strPtr(cfg.StartupScript)},
@@ -129,9 +127,9 @@ func (c *Client) Delete(ctx context.Context, zone, name string) error {
 // FindZone returns the zone an instance of this name lives in, or "" if none.
 // Lets a zone-agnostic cleanup delete a VM without carrying its zone.
 func (c *Client) FindZone(ctx context.Context, name string) (string, error) {
-	// The filter value must be quoted; an unquoted name with a - or . is a syntax
-	// error to the API, not a non-match. AggregatedList spans every zone, so it
-	// pages even when the filter matches one instance.
+	// The filter value must be quoted: an unquoted name containing - or . is a
+	// syntax error, not a non-match. AggregatedList spans every zone, so it pages
+	// even when the filter matches one instance.
 	call := c.svc.Instances.AggregatedList(c.project).Filter(fmt.Sprintf("name=%q", name))
 	for {
 		agg, err := call.Context(ctx).Do()

@@ -8,11 +8,10 @@ agent:
 execution_time_limit:
   minutes: 30
 
-# Manual-only promotion (no auto_promote in semaphore.yml): trigger from the
-# Semaphore UI to (re)build the GKE secondary-boot-disk image that preloads
-# calico/go-build. The heavy work runs on a throwaway GCE builder VM via Google's
-# gke-disk-image-builder (see preload-disk/build-preload-disk.sh); this agent
-# drives gcloud + `go run`.
+# Manual-only (no auto_promote in semaphore.yml): trigger from the Semaphore UI to
+# (re)build the GKE secondary-boot-disk image preloading calico/go-build. The work
+# runs on a throwaway builder VM via Google's gke-disk-image-builder (see
+# preload-disk/build-preload-disk.sh); this agent drives gcloud + `go run`.
 global_job_config:
   env_vars:
     - name: PROJECT
@@ -25,10 +24,9 @@ global_job_config:
     # be attachable as a secondary boot disk -- adjust PROJECT if needed.
     - name: GCS_PATH
       value: gs://gke-argo-disk-images
-  # Same GCE service-account secret the projectcalico/calico GCE jobs use; provides
-  # $HOME/secrets/secret.google-service-account-key.json (also GOOGLE_APPLICATION_
-  # CREDENTIALS -> ADC, which gke-disk-image-builder reads). Needs compute
-  # instance/disk/image create+delete and log-bucket write in PROJECT.
+  # Same secret the projectcalico/calico GCE jobs use; also feeds ADC, which
+  # gke-disk-image-builder reads. Needs compute instance/disk/image create+delete
+  # and log-bucket write in PROJECT.
   secrets:
     - name: google-service-account-for-gce
   prologue:

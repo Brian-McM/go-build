@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Tigera, Inc. All rights reserved.
 
-// Command scratch-utils bundles the CI VM helpers into a single binary, dispatched by
+// Command scratch-utils bundles the CI VM helpers into one binary dispatched by
 // subcommand -- one image, different args, not four binaries:
 //
 //	scratch-utils createvm                       create the CI GCE VM (config from env)
@@ -27,8 +27,8 @@ func main() {
 		os.Exit(2)
 	}
 	sub := os.Args[1]
-	// Re-slice so each subcommand sees its own args as os.Args[1:] (its flag
-	// parsing and positional args work unchanged).
+	// Re-slice so each subcommand sees its own args as os.Args[1:], leaving its flag
+	// parsing unchanged.
 	os.Args = append([]string{os.Args[0] + " " + sub}, os.Args[2:]...)
 
 	switch sub {

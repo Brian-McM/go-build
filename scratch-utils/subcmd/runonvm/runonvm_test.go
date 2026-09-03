@@ -29,8 +29,8 @@ func TestSplitPair(t *testing.T) {
 	}
 }
 
-// shellQuote's output is sourced by bash on the VM, so the real contract is that
-// the value round-trips through a shell byte for byte. Ask a shell.
+// The output is sourced by bash on the VM, so the contract is a byte-for-byte
+// round trip through a shell. Ask a shell.
 func TestShellQuoteRoundTripsThroughBash(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")
@@ -64,8 +64,8 @@ func TestShellQuoteRoundTripsThroughBash(t *testing.T) {
 	}
 }
 
-// The env file is `export NAME=<quoted>` lines that the script sources; make sure
-// a hostile value cannot break out of the assignment.
+// The env file is `export NAME=<quoted>` lines; a hostile value must not break out
+// of the assignment.
 func TestShellQuoteInExportLine(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")

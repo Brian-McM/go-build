@@ -1,10 +1,9 @@
 // Copyright (c) 2026 Tigera, Inc. All rights reserved.
 
-// SSH access to a GCE VM without gcloud: an ephemeral keypair is injected as the
-// instance's `ssh-keys` metadata (the guest agent writes it into the login user's
-// authorized_keys), the external IP comes from the instance itself, and the
-// connection is a plain golang.org/x/crypto/ssh dial. This is what lets the run
-// step drive the VM from the same scratch image createvm/deletevm run on.
+// SSH access to a GCE VM without gcloud: an ephemeral keypair goes in as the
+// instance's `ssh-keys` metadata (the guest agent installs it), the external IP
+// comes from the instance, and the connection is a plain x/crypto/ssh dial. This
+// is what lets the run step drive the VM from the same distroless image.
 package gce
 
 import (
@@ -33,12 +32,11 @@ type SSH struct {
 }
 
 // DialSSH injects an ephemeral keypair into the instance's metadata, reads its
-// external IP, and dials SSH as user, retrying until the VM is reachable (a fresh
-// VM accepts SSH only once sshd, the guest agent, and the key have caught up, so
-// the first attempts routinely lose that race). This retry IS the readiness check
-// createvm deliberately skips. The host key is not verified: the VM was just
-// created by us, is reached only over its ephemeral external IP, and lives for
-// minutes -- there is no prior key to pin.
+// external IP, and dials SSH as user, retrying until reachable -- a fresh VM
+// accepts SSH only once sshd, the guest agent and the key have caught up. This
+// retry is the readiness check createvm skips. The host key is not verified: we
+// just created the VM, reach it only over its ephemeral IP, and it lives for
+// minutes, so there is no prior key to pin.
 func (c *Client) DialSSH(ctx context.Context, zone, name, user string) (*SSH, error) {
 	signer, authorized, err := ephemeralKey()
 	if err != nil {
@@ -144,10 +142,9 @@ func ephemeralKey() (ssh.Signer, string, error) {
 // Close closes the underlying connection.
 func (s *SSH) Close() error { return s.client.Close() }
 
-// Run executes cmd on the VM, streaming its stdout/stderr to the given writers,
-// and returns the command's exit status. A non-zero exit is reported as exitCode
-// with a nil error so the caller can propagate it; err is non-nil only for a
-// connection/protocol failure.
+// Run executes cmd on the VM, streaming output to the given writers. A non-zero
+// exit comes back as exitCode with a nil error so the caller can propagate it;
+// err is non-nil only for a connection or protocol failure.
 func (s *SSH) Run(cmd string, stdout, stderr io.Writer) (exitCode int, err error) {
 	sess, err := s.client.NewSession()
 	if err != nil {
@@ -174,10 +171,10 @@ func (s *SSH) PutData(data []byte, remote string, mode os.FileMode) error {
 	}
 	defer sess.Close()
 	sess.Stdin = bytes.NewReader(data)
-	// Capture the remote's stderr so a failing mkdir/chmod says why.
+	// Capture remote stderr so a failing mkdir/chmod says why.
 	var errBuf bytes.Buffer
 	sess.Stderr = &errBuf
-	// `cat >` reads stdin; the quoting is on paths we control (no user input).
+	// `cat >` reads stdin; quoting is on paths we control.
 	cmd := fmt.Sprintf("mkdir -p %q && cat > %q && chmod %o %q",
 		filepath.Dir(remote), remote, mode.Perm(), remote)
 	if err := sess.Run(cmd); err != nil {
@@ -206,10 +203,9 @@ func (s *SSH) PutDir(localDir, remoteDir string) error {
 
 	pr, pw := io.Pipe()
 	sess.Stdin = pr
-	// Closing the read end unblocks tarDir if the session dies before draining the
-	// pipe; without it that goroutine parks on a write nobody will ever read.
+	// Unblocks tarDir if the session dies before draining the pipe.
 	defer pr.Close()
-	// Buffered so the goroutine can always finish, even on the early-return paths.
+	// Buffered so the goroutine finishes even on the early returns below.
 	tarErr := make(chan error, 1)
 	go func() {
 		err := tarDir(localDir, pw)
@@ -223,17 +219,17 @@ func (s *SSH) PutDir(localDir, remoteDir string) error {
 	if err := sess.Run(cmd); err != nil {
 		return fmt.Errorf("put dir %s: %w: %s", remoteDir, err, strings.TrimSpace(errBuf.String()))
 	}
-	// Run returned, so the tar finished; a read error here means we shipped a
-	// truncated tree that the remote untarred without complaint.
+	// Run returned, so the tar is done. An error here means we shipped a truncated
+	// tree the remote untarred without complaint.
 	if err := <-tarErr; err != nil {
 		return fmt.Errorf("tar %s for %s: %w", localDir, remoteDir, err)
 	}
 	return nil
 }
 
-// GetDir pulls a remote directory's contents into localDir (best-effort: a
-// missing remote path is not an error -- an epilogue runs exactly when the files
-// it wanted may never have been produced). It streams a tar off the VM.
+// GetDir streams a remote directory's contents into localDir. Best-effort: a
+// missing remote path is not an error, since an epilogue runs precisely when the
+// files it wants may never have been produced.
 func (s *SSH) GetDir(remoteDir, localDir string) error {
 	sess, err := s.client.NewSession()
 	if err != nil {
@@ -287,8 +283,7 @@ func tarDir(dir string, w io.Writer) error {
 		if err != nil {
 			return err
 		}
-		// Close per file, not deferred: a deferred Close here would hold every
-		// descriptor open until the whole walk finished.
+		// Not deferred: that would hold every descriptor until the walk finished.
 		_, err = io.Copy(tw, f)
 		f.Close()
 		return err

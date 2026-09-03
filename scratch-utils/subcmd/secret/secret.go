@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Tigera, Inc. All rights reserved.
 
-// Package secret materializes a mounted-secret env var to a file — the Go form of
-// cc-utils' createLocalSecret, for the scratch image. Usage: secret NAME PATH.
+// Package secret materializes a mounted-secret env var to a file, the Go form of
+// cc-utils' createLocalSecret. Usage: secret NAME PATH.
 package secret
 
 import (

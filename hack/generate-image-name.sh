@@ -1,24 +1,21 @@
 #!/bin/bash
-# Generate a GCE image name for a build artifact that corresponds to a go-build
-# release, so a VM/disk image and a calico/go-build tag are matchable by eye:
+# Generate a GCE image name matching the go-build release it corresponds to, so an
+# image and a calico/go-build tag are matchable by eye:
 #
 #   1.27.0-llvm21.1.8-k8s1.37.0   ->   ci-base-1-27-0-llvm21-1-8-k8s1-37-0
 #
-# The version half follows exactly what calico-go-build-cd does for its image tag
-# (see .semaphore/promotions/calico-go-build.yml): a tag build uses the git tag,
-# anything else uses the branch. The tag matters because it is the only place the
-# re-release suffix lives -- a CVE fix that leaves every compiler version
-# untouched reuses the version tag with -1, -2 appended (see
-# .github/workflows/create-tag-on-version-change.yml), and
-# generate-version-tag-name.sh does not emit that.
+# The version half follows calico-go-build-cd (see promotions/calico-go-build.yml):
+# a tag build uses the git tag, anything else the branch. The tag matters because
+# it is the only place the re-release suffix lives -- a CVE fix leaving every
+# compiler version untouched reuses the tag with -1, -2 appended (see
+# create-tag-on-version-change.yml), which generate-version-tag-name.sh cannot know.
 #
 #   tag build      1.27.0-llvm21.1.8-k8s1.37.0-1  ->  ci-base-1-27-0-llvm21-1-8-k8s1-37-0-1
 #   branch build   go1.27                         ->  ci-base-go1-27
 #   branch build   master                         ->  ci-base-master
 #
-# GCE resource names are RFC1035: lowercase, digits and hyphens only, first
-# character a letter, 63 max. Dots (and anything else illegal, such as the / in a
-# branch name) become hyphens.
+# GCE names are RFC1035: lowercase, digits, hyphens, leading letter, 63 max. Dots
+# and anything else illegal (a / in a branch name) become hyphens.
 #
 #   generate-image-name.sh -p ci-base [-f images/calico-go-build/versions.yaml]
 
@@ -56,15 +53,12 @@ if [[ ${SEMAPHORE_GIT_REF_TYPE:-} == "tag" && -n ${SEMAPHORE_GIT_TAG_NAME:-} ]];
 elif [[ -n ${SEMAPHORE_GIT_WORKING_BRANCH:-} ]]; then
     version="${SEMAPHORE_GIT_WORKING_BRANCH}"
 elif branch="$(git -C "$here" rev-parse --abbrev-ref HEAD 2>/dev/null)" && [[ -n $branch && $branch != "HEAD" ]]; then
-    # Local run: the checked-out branch is the closest thing to CI's branch build.
-    version="$branch"
+    version="$branch" # local run
 else
-    # Detached HEAD with no CI hints: fall back to what the versions file says.
-    version="$("$here/generate-version-tag-name.sh" -f "$ver_file")"
+    version="$("$here/generate-version-tag-name.sh" -f "$ver_file")" # detached HEAD
 fi
 
-# Fold to a legal RFC1035 tail: lowercase, anything illegal (dots, slashes,
-# underscores) to a hyphen, no runs of hyphens, no leading or trailing hyphen.
+# Fold to a legal RFC1035 tail: no runs of hyphens, none leading or trailing.
 version="$(echo "$version" |
     tr '[:upper:]' '[:lower:]' |
     sed -e 's/[^a-z0-9-]/-/g' -e 's/--*/-/g' -e 's/^-//' -e 's/-$//')"

@@ -106,12 +106,12 @@ calico-binfmt-cd: calico-binfmt-image var-require-one-of-CONFIRM-DRYRUN
 	$(MAKE) BUILD_IMAGES=$(CALICO_BINFMT) retag-build-images-with-registries push-images-to-registries IMAGETAG=$(CALICO_BINFMT_IMAGETAG) LATEST_IMAGE_TAG=$(CALICO_BINFMT_IMAGETAG) VALIDARCHES=amd64 EXCLUDEARCH="$(EXCLUDEARCH)"
 
 ################################################################################
-# Calico scratch-utils image: the CI VM lifecycle binary for the ArgoCI kind-rig.
+# Calico scratch-utils image: the CI VM lifecycle binary.
 ################################################################################
 
 CALICO_SCRATCH_UTILS_IMAGETAG ?= $(shell yq -r '.scratch-utils.version' calico-scratch-utils/versions.yaml)
 
-# amd64 only, like binfmt -- the CI/CD runners and the GCE VMs are x86_64.
+# amd64 only, like binfmt: the runners and the GCE VMs are x86_64.
 .PHONY: calico-scratch-utils-image
 calico-scratch-utils-image: build
 	$(DOCKER_BUILD) -t $(CALICO_SCRATCH_UTILS):$(CALICO_SCRATCH_UTILS_IMAGETAG)-amd64 -f calico-scratch-utils/Dockerfile calico-scratch-utils/

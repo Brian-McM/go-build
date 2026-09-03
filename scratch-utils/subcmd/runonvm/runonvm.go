@@ -1,21 +1,17 @@
 // Copyright (c) 2026 Tigera, Inc. All rights reserved.
 
-// Package runonvm runs a script on a GCE VM over SSH, with no gcloud -- the
-// generic "runOn: vm" primitive for the scratch-utils image. It ships files and
-// secrets to the VM, runs a script there (a FILE, never a command string, so
-// nothing has to survive three levels of shell quoting), pulls artifacts back on
-// ANY exit, and exits with the script's own status.
+// Package runonvm runs a script on a GCE VM over SSH: the generic "runOn: vm"
+// primitive. It ships files and secrets, runs a script (a FILE, never a command
+// string, so nothing has to survive three levels of shell quoting), pulls
+// artifacts back on ANY exit, and exits with the script's own status.
 //
-// It is meant to be the `command` of an Argo `script` template: Argo writes the
-// template's `source:` to a temp file and appends its path as the final argument,
-// so `runonvm <flags> <source-file>` ships that source to the VM and runs it there
-// -- i.e. the workflow's `source:` block executes naturally on the VM. (--script
-// is the equivalent for direct/CLI use.)
+// It is meant to be the `command` of an Argo `script` template. Argo writes the
+// template's `source:` to a temp file and appends its path as the last argument,
+// so that `source:` block just executes on the VM. (--script is the CLI
+// equivalent.)
 //
-// The VM (its name/zone/project) comes from env, same as createvm/deletevm; the
-// compute SA is materialized by util. Everything job-specific -- which files,
-// which secrets, which artifacts -- is a flag, so this stays generic across CI
-// jobs.
+// The VM comes from env, as in createvm/deletevm. Everything job-specific --
+// which files, secrets and artifacts -- is a flag, so this stays generic.
 //
 //	command: [runonvm,
 //	          --put-env, ENV_VAR:remote/path,     # repeatable; env value -> 0600 file
@@ -46,9 +42,8 @@ func (s *stringList) Set(v string) error {
 	return nil
 }
 
-// setupTimeout bounds the compute-API phase (find the zone, inject the key, dial
-// SSH) so a wedged operation fails the step instead of hanging it. It deliberately
-// does NOT cover running the script -- that is the CI job itself, and it takes as
+// setupTimeout bounds the compute-API phase (find zone, inject key, dial SSH). It
+// deliberately excludes running the script: that is the CI job, and it takes as
 // long as it takes.
 const setupTimeout = 10 * time.Minute
 
@@ -67,8 +62,7 @@ func run(ctx context.Context) int {
 	flag.Var(&gets, "get", "REMOTE:LOCAL dir to pull back on exit, best-effort (repeatable)")
 	flag.Parse()
 
-	// Argo passes the script template's staged source file as the trailing arg;
-	// --script is the equivalent for direct use.
+	// Argo passes the staged source file as the trailing arg.
 	script := *scriptFlag
 	if flag.NArg() > 0 {
 		script = flag.Arg(0)
@@ -95,8 +89,7 @@ func run(ctx context.Context) int {
 		return 1
 	}
 
-	// Bounded context for the compute-API phase only; the script run below is
-	// unbounded (see setupTimeout).
+	// Bounds setup only; the script run below is unbounded.
 	setupCtx, cancelSetup := context.WithTimeout(ctx, setupTimeout)
 	defer cancelSetup()
 
@@ -118,7 +111,7 @@ func run(ctx context.Context) int {
 	defer conn.Close()
 	cancelSetup()
 
-	// Pull artifacts back on ANY exit, so a mid-run failure still returns logs.
+	// On ANY exit, so a mid-run failure still returns logs.
 	defer func() {
 		for _, g := range gets {
 			remote, local, ok := splitPair(g)
@@ -174,10 +167,9 @@ func run(ctx context.Context) int {
 		fmt.Printf("[runonvm] put-env %s -> %s (0600)\n", envVar, remote)
 	}
 
-	// Forward selected env vars into a file the script sources before running --
-	// the generic path for a commit SHA, tokens, etc. (mirrors argoci's /tmp/secrets).
-	// Values are shell-quoted, so any content is safe. An unset var is skipped
-	// (lenient: the script decides whether a missing one is fatal).
+	// Forward env vars through a file the script sources -- the generic path for a
+	// commit SHA, tokens, etc. Values are shell-quoted, so any content is safe. An
+	// unset var is skipped; the script decides whether that is fatal.
 	remoteEnv := "/tmp/runonvm.env"
 	haveEnv := false
 	if len(envs) > 0 {
@@ -199,7 +191,7 @@ func run(ctx context.Context) int {
 		}
 	}
 
-	// Upload the script to a temp path and run it (a file, not a command string).
+	// A file, not a command string.
 	remoteScript := path.Join("/tmp", path.Base(script))
 	if err := conn.PutFile(script, remoteScript, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "runonvm: upload script: %v\n", err)
@@ -219,11 +211,10 @@ func run(ctx context.Context) int {
 	return code
 }
 
-// shellQuote single-quotes s for safe use in a POSIX shell: an embedded
-// apostrophe is closed, backslash-escaped, and reopened, so any value survives
-// verbatim. The literal escape is in the ReplaceAll below and deliberately not
-// repeated here -- gofmt rewrites a doubled apostrophe in a comment into a curly
-// quote, which is where the misrendered sequence in review came from.
+// shellQuote single-quotes s for a POSIX shell: an embedded apostrophe is closed,
+// backslash-escaped and reopened, so any value survives verbatim. The literal
+// escape is only in the code below -- gofmt rewrites a doubled apostrophe in a
+// comment into a curly quote, so it cannot be spelled here.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

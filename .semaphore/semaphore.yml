@@ -48,7 +48,7 @@ promotions:
     pipeline_file: promotions/calico-tinygo.yml
     auto_promote:
       when: "branch = 'master' AND change_in('/images/calico-tinygo/')"
-  # Publish scratch-utils images for master when the binary source or image changed.
+  # Publish scratch-utils images for master when the binary or image changed.
   - name: Publish calico/scratch-utils images
     pipeline_file: promotions/calico-scratch-utils.yml
     auto_promote:
@@ -208,9 +208,8 @@ blocks:
           commands:
             - make -C images calico-scratch-utils-image ARCH=amd64
 
-  # Unit tests for the Go under scratch-utils/ and cmd/. Run in the official golang
-  # image at the version images/calico-go-build/versions.yaml pins, so the tests see
-  # the same Go the go-build image ships and the agent needs no Go of its own.
+  # Run in the golang image at the version versions.yaml pins, so the tests see the
+  # same Go the go-build image ships and the agent needs none of its own.
   - name: Go unit tests
     dependencies: []
     task:

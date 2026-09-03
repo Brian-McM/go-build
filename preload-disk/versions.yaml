@@ -1,14 +1,10 @@
-# Pinned upstream ref for the preload-disk builder.
+# Upstream ref for the gke-disk-image-builder that build-preload-disk.sh fetches.
 #
-# build-preload-disk.sh fetches Google's gke-disk-image-builder from
-# github.com/ai-on-gke/tools and runs it. It cannot be imported as a Go module:
-# that repo's go.mod still declares the old
-# github.com/GoogleCloudPlatform/ai-on-gke/gke-disk-image-builder path, and the
-# directory was deleted from that repo, so `go get` resolves only to an abandoned
-# 2023 snapshot. Fetching a pinned commit is the way to get current code.
+# Not a Go module dependency: ai-on-gke/tools still declares the old
+# GoogleCloudPlatform/ai-on-gke path in its go.mod and the directory was deleted
+# from that repo, so `go get` reaches only an abandoned 2023 snapshot.
 #
-# Pinned to a commit rather than a branch on purpose: this job runs on every
-# go-build release, and `main` moving under us would mean two releases building
-# their disks with different builder code.
+# A commit, not a branch: this runs on every go-build release, and `main` moving
+# would mean two releases building disks with different builder code.
 ai-on-gke:
   ref: 462a06c810c00868514edadf8adfd149ea1d6943
