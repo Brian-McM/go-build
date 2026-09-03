@@ -50,6 +50,7 @@ PROJECT=<cluster-project> ZONE=us-central1-a \
 | `IMAGE_NAME` | `go-build-preload-<go-build tag>` | Named off the go-build release tag, as the go-build images are, so the disk and the image it preloads match by eye. Dots become hyphens (GCE names are RFC1035). |
 | `CONTAINER_IMAGES` | the argoci `calico/go-build` tag | space-separated refs to preload (each needs a tag or digest) |
 | `DISK_SIZE_GB` | `20` | data-disk size (must hold every preloaded image) |
+| `NETWORK` / `SUBNET` | `semaphore-autotest` | Builder VM network. Not `default`: that network is legacy in this project (no subnets), and the builder always requests a subnetwork. |
 | `AI_ON_GKE_REF` | pinned in [`versions.yaml`](versions.yaml) | ai-on-gke/tools commit the builder is fetched at. A branch or tag name also works, for testing an upstream change. |
 
 Needs gcloud authed with compute instance/disk/image create+delete and log-bucket

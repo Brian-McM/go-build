@@ -27,6 +27,12 @@ ZONE="${ZONE:-us-central1-a}"
 # still a new image plus a pool update.
 IMAGE_NAME="${IMAGE_NAME:-$("$REPO/hack/generate-image-name.sh" -p go-build-preload)}"
 DISK_SIZE_GB="${DISK_SIZE_GB:-20}"
+# The builder VM's network. Not "default": that network is LEGACY in this project
+# (10.240.0.0/16, no subnets at all), and the builder always asks for a subnetwork,
+# so it fails validation with subnetworkResourceDoesNotExist. Point at the network
+# the project's CI VMs actually use.
+NETWORK="${NETWORK:-semaphore-autotest}"
+SUBNET="${SUBNET:-semaphore-autotest}"
 GCS_PATH="${GCS_PATH:?set GCS_PATH to a gs:// bucket/path for the builder logs}"
 # Space-separated. Each MUST carry a tag or digest: the cache hits only the exact
 # ref a pod requests, so a floating tag preloads nothing. Defaults to the go-build
@@ -61,6 +67,8 @@ args=(
   --zone="$ZONE"
   --gcs-path="$GCS_PATH"
   --disk-size-gb="$DISK_SIZE_GB"
+  --network="$NETWORK"
+  --subnet="$SUBNET"
 )
 for img in $CONTAINER_IMAGES; do args+=(--container-image="$img"); done
 
@@ -81,7 +89,7 @@ if gcloud compute images describe "$IMAGE_NAME" --project="$PROJECT" >/dev/null 
   gcloud --quiet compute images delete "$IMAGE_NAME" --project="$PROJECT"
 fi
 
-log "building disk image ${IMAGE_NAME} in ${PROJECT}"
+log "building disk image ${IMAGE_NAME} in ${PROJECT} (network ${NETWORK}/${SUBNET})"
 log "preloading: ${CONTAINER_IMAGES}"
 ( cd "$workdir/tools/gke-disk-image-builder" && go run ./cli "${args[@]}" )
 

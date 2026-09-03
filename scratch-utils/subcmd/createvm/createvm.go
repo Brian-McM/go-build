@@ -69,6 +69,10 @@ func run(ctx context.Context) error {
 		DiskSizeGB:  diskGB,
 		// ci-base has the toolchain baked in (built by vm-image/build-image.sh), so
 		// the VM boots ready and the job does no installs. Override for stock Ubuntu.
+		// GOOGLE_VM_IMAGE pins one exact image (e.g.
+		// ci-base-1-27-0-llvm21-1-8-k8s1-37-0) so the image can be rolled without
+		// rebuilding this binary; unset, the family gives whatever is newest.
+		Image:        os.Getenv("GOOGLE_VM_IMAGE"),
 		ImageFamily:  envOr("GOOGLE_VM_IMAGE_FAMILY", "ci-base"),
 		ImageProject: envOr("GOOGLE_VM_IMAGE_PROJECT", "unique-caldron-775"),
 		MaxRun:       maxRun,
@@ -79,7 +83,11 @@ func run(ctx context.Context) error {
 		},
 	}
 
-	fmt.Printf("[createvm] creating %s (%s) in %s across %v\n", name, cfg.MachineType, project, cfg.Zones)
+	from := "family " + cfg.ImageFamily
+	if cfg.Image != "" {
+		from = "image " + cfg.Image
+	}
+	fmt.Printf("[createvm] creating %s (%s) from %s in %s across %v\n", name, cfg.MachineType, from, project, cfg.Zones)
 	zone, err := client.Create(ctx, cfg)
 	if err != nil {
 		return err

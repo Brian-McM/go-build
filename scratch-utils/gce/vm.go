@@ -22,6 +22,7 @@ type Config struct {
 	MachineType   string // e.g. "n2-standard-16"
 	DiskType      string // e.g. "pd-ssd"
 	DiskSizeGB    int64
+	Image         string // exact image name; wins over ImageFamily when set
 	ImageFamily   string // e.g. "ubuntu-2404-lts-amd64"
 	ImageProject  string // e.g. "ubuntu-os-cloud"
 	MaxRun        time.Duration
@@ -80,7 +81,7 @@ func (c *Client) instanceSpec(zone string, cfg Config) *compute.Instance {
 			Boot:       true,
 			AutoDelete: true,
 			InitializeParams: &compute.AttachedDiskInitializeParams{
-				SourceImage: fmt.Sprintf("projects/%s/global/images/family/%s", cfg.ImageProject, cfg.ImageFamily),
+				SourceImage: sourceImage(cfg),
 				DiskSizeGb:  cfg.DiskSizeGB,
 				DiskType:    fmt.Sprintf("zones/%s/diskTypes/%s", zone, cfg.DiskType),
 			},
@@ -164,6 +165,17 @@ func (c *Client) waitZoneOp(ctx context.Context, zone, op string) error {
 			return nil
 		}
 	}
+}
+
+// sourceImage resolves the boot image: an exact name when Image is set, else the
+// family, which always yields its newest member. Pinning matters now that images
+// are named per go-build release -- a job can hold an image steady while newer
+// ones land in the family.
+func sourceImage(cfg Config) string {
+	if cfg.Image != "" {
+		return fmt.Sprintf("projects/%s/global/images/%s", cfg.ImageProject, cfg.Image)
+	}
+	return fmt.Sprintf("projects/%s/global/images/family/%s", cfg.ImageProject, cfg.ImageFamily)
 }
 
 func isNotFound(err error) bool {
