@@ -39,7 +39,10 @@ func Run() int {
 }
 
 func run(ctx context.Context) error {
-	name := mustEnv("VM_NAME")
+	name := os.Getenv("VM_NAME")
+	if name == "" {
+		return fmt.Errorf("VM_NAME must be set")
+	}
 	project := envOr("GCP_VM_PROJECT", "unique-caldron-775")
 	zoneOut := envOr("ZONE_OUT", "/tmp/vm-zone")
 	// Point ADC at the compute SA (mounted key file, or materialized from its env var).
@@ -112,13 +115,4 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
-}
-
-func mustEnv(key string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		fmt.Fprintf(os.Stderr, "createvm: %s must be set\n", key)
-		os.Exit(1)
-	}
-	return v
 }

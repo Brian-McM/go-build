@@ -9,4 +9,4 @@ ARG TARGETARCH
 
 COPY bin/scratch-utils-${TARGETARCH} /usr/local/bin/scratch-utils
 
-ENTRYPOINT ["scratch-utils"]
+ENTRYPOINT ["/usr/local/bin/scratch-utils"]

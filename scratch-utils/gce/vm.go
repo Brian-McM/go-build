@@ -129,18 +129,27 @@ func (c *Client) Delete(ctx context.Context, zone, name string) error {
 // FindZone returns the zone an instance of this name lives in, or "" if none.
 // Lets a zone-agnostic cleanup delete a VM without carrying its zone.
 func (c *Client) FindZone(ctx context.Context, name string) (string, error) {
-	agg, err := c.svc.Instances.AggregatedList(c.project).Filter("name=" + name).Context(ctx).Do()
-	if err != nil {
-		return "", err
-	}
-	for scope, list := range agg.Items {
-		if len(list.Instances) == 0 {
-			continue
+	// The filter value must be quoted; an unquoted name with a - or . is a syntax
+	// error to the API, not a non-match. AggregatedList spans every zone, so it
+	// pages even when the filter matches one instance.
+	call := c.svc.Instances.AggregatedList(c.project).Filter(fmt.Sprintf("name=%q", name))
+	for {
+		agg, err := call.Context(ctx).Do()
+		if err != nil {
+			return "", err
 		}
-		// scope is "zones/<zone>".
-		return strings.TrimPrefix(scope, "zones/"), nil
+		for scope, list := range agg.Items {
+			if len(list.Instances) == 0 {
+				continue
+			}
+			// scope is "zones/<zone>".
+			return strings.TrimPrefix(scope, "zones/"), nil
+		}
+		if agg.NextPageToken == "" {
+			return "", nil
+		}
+		call = call.PageToken(agg.NextPageToken)
 	}
-	return "", nil
 }
 
 // waitZoneOp blocks until a zone operation reaches DONE, surfacing its error.

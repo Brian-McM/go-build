@@ -207,3 +207,15 @@ blocks:
         - name: Build calico/scratch-utils amd64 image
           commands:
             - make -C images calico-scratch-utils-image ARCH=amd64
+
+  # Unit tests for the Go under scratch-utils/ and cmd/. Run in the official golang
+  # image at the version images/calico-go-build/versions.yaml pins, so the tests see
+  # the same Go the go-build image ships and the agent needs no Go of its own.
+  - name: Go unit tests
+    dependencies: []
+    task:
+      jobs:
+        - name: go test
+          commands:
+            - GO_VERSION=$(hack/generate-version-tag-name.sh -f images/calico-go-build/versions.yaml -g)
+            - docker run --rm -v "$PWD:/src" -w /src golang:${GO_VERSION} go test ./scratch-utils/... ./cmd/...

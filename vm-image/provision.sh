@@ -21,6 +21,11 @@ export DEBIAN_FRONTEND=noninteractive
 GO_VERSION="${GO_VERSION:?set by build-image.sh from images/calico-go-build/versions.yaml}"
 GO_SHA256="${GO_SHA256:?set by build-image.sh from images/calico-go-build/versions.yaml}"
 GO_BUILD_IMAGE="${GO_BUILD_IMAGE:?set by build-image.sh from images/calico-go-build/versions.yaml}"
+KUBECTL_VERSION="${KUBECTL_VERSION:?set by build-image.sh from images/calico-go-build/versions.yaml}"
+# kind and gh are pinned in vm-image/versions.yaml.
+KIND_VERSION="${KIND_VERSION:?set by build-image.sh from vm-image/versions.yaml}"
+KIND_NODE_IMAGE="${KIND_NODE_IMAGE:?set by build-image.sh from vm-image/versions.yaml}"
+GH_VERSION="${GH_VERSION:?set by build-image.sh from vm-image/versions.yaml}"
 
 APT=(apt-get -o DPkg::Lock::Timeout=600 -y)
 retry() { local n=8; for i in $(seq 1 $n); do "$@" && return 0; echo "retry $i/$n: $*"; sleep 5; done; return 1; }
@@ -40,7 +45,7 @@ retry "${APT[@]}" install --no-install-recommends docker-ce docker-ce-cli contai
 usermod -a -G docker ubuntu
 systemctl enable docker
 
-# --- go / kind / kubectl / gh (what run-kindrig.sh installs today) ----------
+# --- go / kind / kubectl / gh (all pinned; see the preamble above) -----------
 curl -sSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz
 # Verify against the checksum in versions.yaml, as the go-build Dockerfile does.
 echo "${GO_SHA256}  /tmp/go.tgz" | sha256sum -c -
@@ -48,15 +53,14 @@ rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tgz
 # go + a per-user GOBIN on PATH for interactive + non-interactive shells.
 printf 'export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin\n' > /etc/profile.d/go.sh
 
-curl -sSLo /usr/local/bin/kind "https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64"
+curl -sSLo /usr/local/bin/kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
 chmod 0755 /usr/local/bin/kind
 
-curl -sSLo /usr/local/bin/kubectl "https://dl.k8s.io/release/$(curl -sSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+curl -sSLo /usr/local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
 chmod 0755 /usr/local/bin/kubectl
 
-gh_ver="$(curl -sSL https://api.github.com/repos/cli/cli/releases/latest | grep -oP '"tag_name":\s*"v\K[0-9.]+')"
-curl -sSLo /tmp/gh.tgz "https://github.com/cli/cli/releases/latest/download/gh_${gh_ver}_linux_amd64.tar.gz"
-tar -C /tmp -xzf /tmp/gh.tgz && install -m 0755 /tmp/gh_*/bin/gh /usr/local/bin/gh
+curl -sSLo /tmp/gh.tgz "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz"
+tar -C /tmp -xzf /tmp/gh.tgz && install -m 0755 "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh
 
 # --- inotify limits for 3 kind clusters (persist across boots) --------------
 cat > /etc/sysctl.d/99-kind.conf <<EOF
@@ -67,13 +71,12 @@ EOF
 # --- pre-pull the heavy CI docker images so jobs skip the pull --------------
 # Baked into the image's docker cache: the kind node image (3 clusters), the
 # calico go-build image (make build-calico-image + the operator build), and
-# registry:2 (the pull-through caches + the local helm registry). go-build's tag
-# comes from versions.yaml via build-image.sh, so it cannot drift from the image
-# this repo publishes. kindest/node is still hardcoded (it comes from calico's
-# lib/kind DefaultNodeImage); re-run build-image.sh to refresh when it bumps.
+# registry:2 (the pull-through caches + the local helm registry). Both tags are
+# injected by build-image.sh -- go-build from images/calico-go-build/versions.yaml,
+# the kind node image from vm-image/versions.yaml -- so neither can drift.
 systemctl start docker
 PREPULL_IMAGES=(
-  "kindest/node:v1.33.7@sha256:d26ef333bdb2cbe9862a0f7c3803ecc7b4303d8cea8e814b481b09949d353040"
+  "$KIND_NODE_IMAGE"
   "$GO_BUILD_IMAGE"
   "registry:2"
 )

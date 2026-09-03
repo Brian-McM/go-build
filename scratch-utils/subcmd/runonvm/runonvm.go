@@ -78,7 +78,11 @@ func run(ctx context.Context) int {
 		return 2
 	}
 
-	name := mustEnv("VM_NAME")
+	name := os.Getenv("VM_NAME")
+	if name == "" {
+		fmt.Fprintln(os.Stderr, "runonvm: VM_NAME must be set")
+		return 2
+	}
 	project := envOr("GCP_VM_PROJECT", "unique-caldron-775")
 
 	if err := util.SetupComputeADC(); err != nil {
@@ -238,13 +242,4 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
-}
-
-func mustEnv(key string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		fmt.Fprintf(os.Stderr, "runonvm: %s must be set\n", key)
-		os.Exit(2)
-	}
-	return v
 }

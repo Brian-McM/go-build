@@ -206,13 +206,27 @@ func (s *SSH) PutDir(localDir, remoteDir string) error {
 
 	pr, pw := io.Pipe()
 	sess.Stdin = pr
-	go func() { pw.CloseWithError(tarDir(localDir, pw)) }()
+	// Closing the read end unblocks tarDir if the session dies before draining the
+	// pipe; without it that goroutine parks on a write nobody will ever read.
+	defer pr.Close()
+	// Buffered so the goroutine can always finish, even on the early-return paths.
+	tarErr := make(chan error, 1)
+	go func() {
+		err := tarDir(localDir, pw)
+		pw.CloseWithError(err)
+		tarErr <- err
+	}()
 	var errBuf bytes.Buffer
 	sess.Stderr = &errBuf
 
 	cmd := fmt.Sprintf("mkdir -p %q && tar xzf - -C %q", remoteDir, remoteDir)
 	if err := sess.Run(cmd); err != nil {
 		return fmt.Errorf("put dir %s: %w: %s", remoteDir, err, strings.TrimSpace(errBuf.String()))
+	}
+	// Run returned, so the tar finished; a read error here means we shipped a
+	// truncated tree that the remote untarred without complaint.
+	if err := <-tarErr; err != nil {
+		return fmt.Errorf("tar %s for %s: %w", localDir, remoteDir, err)
 	}
 	return nil
 }

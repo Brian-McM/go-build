@@ -34,17 +34,32 @@ command -v yq >/dev/null || { echo "yq is required to read $VERSIONS" >&2; exit 
 GO_VERSION="${GO_VERSION:-$("$REPO/hack/generate-version-tag-name.sh" -f "$VERSIONS" -g)}"
 GO_SHA256="${GO_SHA256:-$(yq -r '.golang.checksum.sha256.amd64' "$VERSIONS")}"
 GO_BUILD_IMAGE="${GO_BUILD_IMAGE:-calico/go-build:$("$REPO/hack/generate-version-tag-name.sh" -f "$VERSIONS")}"
-log "go $GO_VERSION, prepulling $GO_BUILD_IMAGE (from images/calico-go-build/versions.yaml)"
+# kubectl tracks the same k8s release the go-build image is cut against.
+KUBECTL_VERSION="${KUBECTL_VERSION:-v$(yq -r '.kubernetes.version' "$VERSIONS")}"
+log "go $GO_VERSION, kubectl $KUBECTL_VERSION, prepulling $GO_BUILD_IMAGE (from images/calico-go-build/versions.yaml)"
+
+# kind and gh have no entry in the go-build versions file, so they are pinned in
+# ours. Everything is pinned deliberately: an image build must be reproducible from
+# a commit, which "latest"/stable.txt is not.
+VM_VERSIONS="$HERE/versions.yaml"
+KIND_VERSION="${KIND_VERSION:-$(yq -r '.kind.version' "$VM_VERSIONS")}"
+KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-$(yq -r '.kind.node_image' "$VM_VERSIONS")}"
+GH_VERSION="${GH_VERSION:-$(yq -r '.gh.version' "$VM_VERSIONS")}"
+log "kind $KIND_VERSION (node $KIND_NODE_IMAGE), gh $GH_VERSION (from vm-image/versions.yaml)"
 
 # provision.sh runs on the builder as its startup-script, where it cannot read this
 # repo -- so bake the versions in as a preamble rather than hardcoding them there.
 STARTUP="$(mktemp)"
 {
   echo '#!/usr/bin/env bash'
-  echo '# Preamble injected by build-image.sh from images/calico-go-build/versions.yaml.'
+  echo '# Preamble injected by build-image.sh from the repo versions.yaml files.'
   printf 'export GO_VERSION=%q\n' "$GO_VERSION"
   printf 'export GO_SHA256=%q\n' "$GO_SHA256"
   printf 'export GO_BUILD_IMAGE=%q\n' "$GO_BUILD_IMAGE"
+  printf 'export KUBECTL_VERSION=%q\n' "$KUBECTL_VERSION"
+  printf 'export KIND_VERSION=%q\n' "$KIND_VERSION"
+  printf 'export KIND_NODE_IMAGE=%q\n' "$KIND_NODE_IMAGE"
+  printf 'export GH_VERSION=%q\n' "$GH_VERSION"
   tail -n +2 "$HERE/provision.sh" # its shebang is replaced by the one above
 } >"$STARTUP"
 
