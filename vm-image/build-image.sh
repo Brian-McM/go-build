@@ -44,15 +44,23 @@ log "go $GO_VERSION, kubectl $KUBECTL_VERSION, prepulling $GO_BUILD_IMAGE (from 
 IMAGE="${IMAGE:-$("$REPO/hack/generate-image-name.sh" -p "$FAMILY" -f "$VERSIONS")}"
 log "image name: $IMAGE (family $FAMILY)"
 
-# Fail before spending 4 minutes on a builder VM, not after: GCE image names are
-# unique per project, and a deterministic name means a rebuild of the same release
-# collides. Re-releases get their own -N tag, so a collision means this release's
-# image already exists.
+# GCE image names are unique per project, so a deterministic name collides on a
+# rebuild -- checked here, before spending four minutes on a builder VM rather
+# than failing at the image-create step. What a collision MEANS depends on the
+# trigger, the same split calico/go-build makes between its tags:
+#   release tag -- immutable. A collision means this release is already built.
+#   branch      -- the moving "latest build of this branch", like the
+#                  calico/go-build:<branch> docker tag. Replace it; GCE names are
+#                  unique, so replacing means deleting first.
 if gcloud compute images describe "$IMAGE" --project="$PROJECT" >/dev/null 2>&1; then
-  log "image $IMAGE already exists in $PROJECT -- this release is already built."
-  log "to rebuild it: gcloud compute images delete $IMAGE --project=$PROJECT"
-  log "or set IMAGE=<name> to build under a different name."
-  exit 1
+  if [ "${SEMAPHORE_GIT_REF_TYPE:-}" = "tag" ]; then
+    log "image $IMAGE already exists in $PROJECT -- this release is already built."
+    log "to rebuild it: gcloud compute images delete $IMAGE --project=$PROJECT"
+    log "or set IMAGE=<name> to build under a different name."
+    exit 1
+  fi
+  log "replacing existing branch image $IMAGE"
+  gcloud --quiet compute images delete "$IMAGE" --project="$PROJECT"
 fi
 
 # kind and gh have no entry in the go-build versions file, so they are pinned in

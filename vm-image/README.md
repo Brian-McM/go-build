@@ -45,15 +45,35 @@ an image up by it:
 gcloud compute images list --filter="labels.go-build-tag=1_27_0-llvm21_1_8-k8s1_37_0"
 ```
 
-On a release-tag build the version comes from `$SEMAPHORE_GIT_TAG_NAME`, which is
-the only place the re-release suffix lives — a CVE fix that leaves every compiler
-version untouched reuses the version tag with `-1`, `-2` appended, and
-`generate-version-tag-name.sh` does not emit that. Outside a tag build it falls
-back to the versions file.
+The version half follows exactly what `calico-go-build-cd` does for its image
+tag — a tag build uses the git tag, anything else uses the branch:
 
-Because the name is deterministic rather than timestamped, rebuilding a release
-that already exists is refused up front (before the builder VM is created) rather
-than failing at the image-create step minutes later.
+| Trigger | Source | Image |
+|---|---|---|
+| release tag | `$SEMAPHORE_GIT_TAG_NAME` | `ci-base-1-27-0-llvm21-1-8-k8s1-37-0` |
+| re-release tag | `$SEMAPHORE_GIT_TAG_NAME` | `ci-base-1-27-0-llvm21-1-8-k8s1-37-0-1` |
+| branch (manual promotion) | `$SEMAPHORE_GIT_WORKING_BRANCH` | `ci-base-master`, `ci-base-go1-27` |
+| local run | the checked-out branch | `ci-base-<branch>` |
+
+The tag matters because it is the only place the **re-release suffix** lives: a
+CVE fix that leaves every compiler version untouched reuses the version tag with
+`-1`, `-2` appended (see `create-tag-on-version-change.yml`), and
+`generate-version-tag-name.sh` does not emit that. Deriving the name from the
+versions file alone would have two releases fighting over one image name.
+
+### Rebuilding
+
+A deterministic name collides where a timestamp never did, so both builders check
+for the image **before** creating a builder VM. What a collision means depends on
+the trigger, the same split calico/go-build makes between its tags:
+
+- **Release tag** — immutable. The build is refused; a collision means that
+  release is already built. Delete it explicitly, or set `IMAGE=` to override.
+- **Branch** — the moving "latest build of this branch", like the
+  `calico/go-build:<branch>` docker tag. The old image is deleted and rebuilt.
+
+There is no `latest` equivalent to maintain: the image **family** already serves
+that role, and `createvm` asks for the family.
 
 You need `yq`, and gcloud authed as an identity with compute instance + image
 create/delete in `PROJECT`.

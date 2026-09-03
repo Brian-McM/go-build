@@ -73,13 +73,22 @@ args=(
 )
 for img in $CONTAINER_IMAGES; do args+=(--container-image="$img"); done
 
-# Same pre-flight as vm-image: a deterministic name collides on a rebuild of the
-# same release, and finding that out after the builder VM has run is expensive.
+# Same pre-flight and the same release/branch split as vm-image (see the comment
+# there). One extra caution here: a node pool pins this exact image name in
+# --secondary-boot-disk, so replacing a branch image deletes something a pool may
+# still reference. Release images are never replaced, which is the case that
+# matters for a pool pinned to a release.
 if gcloud compute images describe "$IMAGE_NAME" --project="$PROJECT" >/dev/null 2>&1; then
-  log "image $IMAGE_NAME already exists in $PROJECT -- this release is already built."
-  log "to rebuild it: gcloud compute images delete $IMAGE_NAME --project=$PROJECT"
-  log "or set IMAGE_NAME=<name> to build under a different name."
-  exit 1
+  if [ "${SEMAPHORE_GIT_REF_TYPE:-}" = "tag" ]; then
+    log "image $IMAGE_NAME already exists in $PROJECT -- this release is already built."
+    log "to rebuild it: gcloud compute images delete $IMAGE_NAME --project=$PROJECT"
+    log "or set IMAGE_NAME=<name> to build under a different name."
+    exit 1
+  fi
+  log "replacing existing branch image $IMAGE_NAME"
+  log "WARNING: if a node pool pins $IMAGE_NAME as its secondary boot disk, it"
+  log "         loses that disk until this build finishes."
+  gcloud --quiet compute images delete "$IMAGE_NAME" --project="$PROJECT"
 fi
 
 log "building disk image ${IMAGE_NAME} in ${PROJECT}"
