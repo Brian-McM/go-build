@@ -13,12 +13,19 @@
 // The VM comes from env, as in createvm/deletevm. Everything job-specific --
 // which files, secrets and artifacts -- is a flag, so this stays generic.
 //
-//	command: [runonvm,
+// The image ENTRYPOINT is the scratch-utils binary, so the subcommand is an
+// ARGUMENT, not the command -- a bare `command: [runonvm]` overrides the entrypoint
+// and fails with "executable file not found in $PATH".
+//
+//	command: [scratch-utils, runonvm,
 //	          --put-env, ENV_VAR:remote/path,     # repeatable; env value -> 0600 file
 //	          --env,     ENV_VAR,                 # repeatable; forwarded into a sourced env file
 //	          --get,     remote/dir:local/dir]    # repeatable; best-effort, on exit
 //	source: |                                     # Argo appends this file; it runs on the VM
 //	  ...
+//
+// A plain container template can instead leave the entrypoint alone and pass
+// `args: [runonvm, ...]`.
 package runonvm
 
 import (

@@ -9,6 +9,10 @@
 //	scratch-utils runonvm [flags] <script>       run a script on the VM over SSH
 //
 // It has no gcloud/bash dependency, so it runs from a scratch/distroless image.
+//
+// The image ENTRYPOINT is this binary, so in a pod the subcommand is an ARGUMENT:
+// `args: [createvm]`, or `command: [scratch-utils, createvm]`. A bare
+// `command: [createvm]` overrides the entrypoint and fails to exec.
 package main
 
 import (
