@@ -7,7 +7,9 @@ package gce
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -47,29 +49,68 @@ func New(ctx context.Context, project string) (*Client, error) {
 	return &Client{svc: svc, project: project}, nil
 }
 
+// PerZoneTimeout bounds ONE zone's attempt. The zone list exists so a zone short
+// on capacity can be skipped, which only works if each gets its own budget: with a
+// single deadline spanning the loop, one slow zone consumed all of it and every
+// later zone failed its insert instantly with "context deadline exceeded",
+// reporting a zone that was never really tried and hiding the actual failure.
+const PerZoneTimeout = 3 * time.Minute
+
 // Create inserts the instance in the first zone that accepts it, waits for the
 // insert to finish, and returns that zone. The VM gets an external IP,
 // cloud-platform scope, and a max-run-duration GCP reclaims it at — a leaked-VM
 // backstop independent of any cleanup step.
+//
+// Every zone's error is reported, not just the last: which zones were out of
+// capacity and which were never reached is exactly what you need from a CI log.
 func (c *Client) Create(ctx context.Context, cfg Config) (zone string, err error) {
-	var lastErr error
+	if len(cfg.Zones) == 0 {
+		return "", fmt.Errorf("no zones configured")
+	}
+	var errs []error
 	for _, z := range cfg.Zones {
-		inst := c.instanceSpec(z, cfg)
-		op, err := c.svc.Instances.Insert(c.project, z, inst).Context(ctx).Do()
-		if err != nil {
-			lastErr = fmt.Errorf("insert in %s: %w", z, err)
+		if err := ctx.Err(); err != nil {
+			errs = append(errs, fmt.Errorf("%s: not attempted: %w", z, err))
 			continue
 		}
-		if err := c.waitZoneOp(ctx, z, op.Name); err != nil {
-			lastErr = fmt.Errorf("insert op in %s: %w", z, err)
+		fmt.Fprintf(os.Stderr, "[gce] trying %s in %s\n", cfg.Name, z)
+		if err := c.createInZone(ctx, z, cfg); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", z, err))
 			continue
 		}
 		return z, nil
 	}
-	if lastErr == nil {
-		lastErr = fmt.Errorf("no zones configured")
+	return "", fmt.Errorf("could not create %s in any zone: %w", cfg.Name, errors.Join(errs...))
+}
+
+// createInZone attempts one zone under its own deadline.
+func (c *Client) createInZone(ctx context.Context, zone string, cfg Config) error {
+	zctx, cancel := context.WithTimeout(ctx, PerZoneTimeout)
+	defer cancel()
+
+	op, err := c.svc.Instances.Insert(c.project, zone, c.instanceSpec(zone, cfg)).Context(zctx).Do()
+	if err != nil {
+		return fmt.Errorf("insert: %w", err)
 	}
-	return "", fmt.Errorf("could not create %s in any zone: %w", cfg.Name, lastErr)
+	if err := c.waitZoneOp(zctx, zone, op.Name); err != nil {
+		// The insert was accepted, so an instance may exist or be mid-create even
+		// though we are moving on. Left behind it would run to max-run-duration while
+		// we boot another elsewhere -- two VMs for one job.
+		c.deleteBestEffort(zone, cfg.Name)
+		return fmt.Errorf("wait for insert: %w", err)
+	}
+	return nil
+}
+
+// deleteBestEffort removes an instance we are abandoning. It builds its own
+// context: the caller's is typically already expired, which is why we are here.
+func (c *Client) deleteBestEffort(zone, name string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	fmt.Fprintf(os.Stderr, "[gce] cleaning up abandoned %s in %s\n", name, zone)
+	if err := c.Delete(ctx, zone, name); err != nil {
+		fmt.Fprintf(os.Stderr, "[gce] cleanup of %s in %s failed: %v (max-run-duration is the backstop)\n", name, zone, err)
+	}
 }
 
 func (c *Client) instanceSpec(zone string, cfg Config) *compute.Instance {

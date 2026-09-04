@@ -19,16 +19,9 @@ import (
 	"github.com/projectcalico/go-build/scratch-utils/util"
 )
 
-// createTimeout bounds the whole create: an operation that never reaches DONE
-// should fail the step, not hang it until the workflow's own timeout.
-const createTimeout = 10 * time.Minute
-
 // Run executes the createvm subcommand and returns its exit code.
 func Run() int {
-	ctx, cancel := context.WithTimeout(context.Background(), createTimeout)
-	defer cancel()
-
-	if err := run(ctx); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintf(os.Stderr, "createvm: %v\n", err)
 		return 1
 	}
@@ -61,9 +54,20 @@ func run(ctx context.Context) error {
 		return err
 	}
 
+	zones := strings.Fields(envOr("GOOGLE_VM_ZONES", "us-central1-a us-central1-b us-central1-c us-central1-f"))
+	if len(zones) == 0 {
+		return fmt.Errorf("GOOGLE_VM_ZONES is empty")
+	}
+	// Bound the whole create so an operation that never reaches DONE fails the step
+	// instead of hanging it until the workflow's own timeout. Derived from the zone
+	// count so every zone gets its full budget: a fixed cap silently starved the
+	// later zones when an early one was slow.
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(len(zones))*gce.PerZoneTimeout+time.Minute)
+	defer cancel()
+
 	cfg := gce.Config{
 		Name:        name,
-		Zones:       strings.Fields(envOr("GOOGLE_VM_ZONES", "us-central1-a us-central1-b us-central1-c us-central1-f")),
+		Zones:       zones,
 		MachineType: envOr("GOOGLE_VM_MACHINE_TYPE", "n2-standard-16"),
 		DiskType:    envOr("GOOGLE_VM_DISK_TYPE", "pd-ssd"),
 		DiskSizeGB:  diskGB,
