@@ -17,17 +17,24 @@
 # GCE names are RFC1035: lowercase, digits, hyphens, leading letter, 63 max. Dots
 # and anything else illegal (a / in a branch name) become hyphens.
 #
-#   generate-image-name.sh -p ci-base [-f images/calico-go-build/versions.yaml]
+# -m caps the length below GCE's own 63. GKE allows a secondary boot disk image
+# name of at most 39 characters, and enforces it when a node pool ATTACHES the
+# image -- long after the image built cleanly. Pass the real cap so an over-long
+# name fails here instead.
+#
+#   generate-image-name.sh -p ci-base [-f versions.yaml] [-m 39]
 
 set -eu
 
 prefix=""
 ver_file=""
+max_len=63
 
-while getopts ":p:f:" opt; do
+while getopts ":p:f:m:" opt; do
     case $opt in
     p) prefix="$OPTARG" ;;
     f) ver_file="$OPTARG" ;;
+    m) max_len="$OPTARG" ;;
     :)
         echo "option: -$OPTARG requires an argument" >&2
         exit 1
@@ -70,8 +77,8 @@ fi
 
 name="${prefix}-${version}"
 
-if [[ ${#name} -gt 63 ]]; then
-    echo "image name is ${#name} characters, over the GCE limit of 63: $name" >&2
+if [[ ${#name} -gt $max_len ]]; then
+    echo "image name is ${#name} characters, over the limit of ${max_len}: $name" >&2
     exit 1
 fi
 if ! [[ $name =~ ^[a-z]([-a-z0-9]*[a-z0-9])?$ ]]; then

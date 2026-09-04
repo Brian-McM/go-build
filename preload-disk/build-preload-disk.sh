@@ -25,7 +25,12 @@ ZONE="${ZONE:-us-central1-a}"
 # go-build release tag, as the go-build images are, so the disk and the image it
 # preloads match by eye. A pool binds an image at create time, so refreshing one is
 # still a new image plus a pool update.
-IMAGE_NAME="${IMAGE_NAME:-$("$REPO/hack/generate-image-name.sh" -p go-build-preload)}"
+# Prefix is terse because GKE caps a secondary boot disk image name at 39 chars,
+# well under GCE's 63: "gbp" leaves room for the full go-build tag even in its
+# longest real shape (...-k8s1-37-0-rc-1-1, 34 chars), so the disk and the image it
+# caches still match by eye. -m makes an over-long name fail here rather than when
+# a node pool tries to attach it.
+IMAGE_NAME="${IMAGE_NAME:-$("$REPO/hack/generate-image-name.sh" -p gbp -m 39)}"
 DISK_SIZE_GB="${DISK_SIZE_GB:-20}"
 # The builder VM's network. Not "default": that network is LEGACY in this project
 # (10.240.0.0/16, no subnets at all), and the builder always asks for a subnetwork,
@@ -93,7 +98,7 @@ log "building disk image ${IMAGE_NAME} in ${PROJECT} (network ${NETWORK}/${SUBNE
 log "preloading: ${CONTAINER_IMAGES}"
 ( cd "$workdir/tools/gke-disk-image-builder" && go run ./cli "${args[@]}" )
 
-log "done: image ${IMAGE_NAME} (project ${PROJECT})"
+log "done: image ${IMAGE_NAME} (project ${PROJECT}, ${#IMAGE_NAME}/39 chars)"
 log "attach it to a node pool (image streaming required; cross-project is fine --"
 log "see README.md for the compute.imageUser grants a cluster elsewhere needs):"
 log "  gcloud container node-pools create <pool> --cluster=<cluster> --location=<loc> \\"

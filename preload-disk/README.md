@@ -32,6 +32,30 @@ Fetching a pinned commit gets current code and keeps `compute-daisy` and the
 `cloud.google.com/go` stack — about 17 extra modules — out of this repo's
 dependency graph, which matters because `scratch-utils` shares it.
 
+## Image naming
+
+Named off the go-build release tag, as the go-build images are, so the disk and
+the image it caches match by eye:
+
+| | |
+|---|---|
+| go-build image | `calico/go-build:1.27.0-llvm21.1.8-k8s1.37.0` |
+| preload disk | `gbp-1-27-0-llvm21-1-8-k8s1-37-0` |
+
+The prefix is terse for a reason. **GKE caps a secondary boot disk image name at
+39 characters** — well under GCE's own 63 — and enforces it when a node pool
+*attaches* the image, not when the image is built. So an over-long name builds
+happily and then fails at `node-pools create` with:
+
+```
+Secondary boot disk image name must be at most 39 characters
+```
+
+`gbp` leaves room for the full tag even in its longest real shape
+(`...-k8s1-37-0-rc-1-1`, 34 characters). `hack/generate-image-name.sh -m 39`
+enforces the cap at build time so it cannot surface at attach time again. The
+exact tag is also attached as a `go-build-tag` label.
+
 ## Build
 
 ```bash
@@ -47,7 +71,7 @@ PROJECT=<cluster-project> ZONE=us-central1-a \
 | `PROJECT` | `unique-caldron-775` | where the image (and builder VM) are created — **must be the node pool's project** |
 | `ZONE` | `us-central1-a` | builder VM zone |
 | `GCS_PATH` | *(required)* | `gs://` bucket/path for builder logs |
-| `IMAGE_NAME` | `go-build-preload-<go-build tag>` | Named off the go-build release tag, as the go-build images are, so the disk and the image it preloads match by eye. Dots become hyphens (GCE names are RFC1035). |
+| `IMAGE_NAME` | `gbp-<go-build tag>` | See **Image naming** below — GKE caps this at 39 characters. |
 | `CONTAINER_IMAGES` | the argoci `calico/go-build` tag | space-separated refs to preload (each needs a tag or digest) |
 | `DISK_SIZE_GB` | `20` | data-disk size (must hold every preloaded image) |
 | `NETWORK` / `SUBNET` | `semaphore-autotest` | Builder VM network. Not `default`: that network is legacy in this project (no subnets), and the builder always requests a subnetwork. |
