@@ -49,17 +49,26 @@ func New(ctx context.Context, project string) (*Client, error) {
 	return &Client{svc: svc, project: project}, nil
 }
 
-// PerZoneTimeout bounds ONE zone's attempt. The zone list exists so a zone short
-// on capacity can be skipped, which only works if each gets its own budget: with a
-// single deadline spanning the loop, one slow zone consumed all of it and every
-// later zone failed its insert instantly with "context deadline exceeded",
-// reporting a zone that was never really tried and hiding the actual failure.
+// PerZoneTimeout bounds ONE zone's attempt. The zone list exists so a degraded zone
+// can be skipped, which only works if each gets its own budget: with a single
+// deadline spanning the loop, one slow zone consumed all of it and every later zone
+// failed its insert instantly with "context deadline exceeded", reporting a zone
+// that was never really tried and hiding the actual failure.
+//
+// Three minutes because the failure mode is slowness, not rejection: us-central1-a
+// once accepted an insert and took 85 minutes to finish it, rather than returning
+// an out-of-capacity error we could react to.
 const PerZoneTimeout = 3 * time.Minute
 
 // Create inserts the instance in the first zone that accepts it, waits for the
 // insert to finish, and returns that zone. The VM gets an external IP,
-// cloud-platform scope, and a max-run-duration GCP reclaims it at — a leaked-VM
-// backstop independent of any cleanup step.
+// cloud-platform scope, and a max-run-duration GCP reclaims it at.
+//
+// That reclaim is a backstop, not a guarantee. It fires on time, but it is itself
+// an operation: observed in us-central1-a, an insert stayed RUNNING for over 90
+// minutes and the deadline's own DELETE then sat PENDING behind it. A VM whose
+// insert is wedged can outlive its max-run-duration, so treat the backstop as
+// eventual, and the per-zone timeout below as the thing that keeps a job moving.
 //
 // Every zone's error is reported, not just the last: which zones were out of
 // capacity and which were never reached is exactly what you need from a CI log.
