@@ -88,7 +88,22 @@ event is not `Pulling` for seconds).
   the go-build tag bumps, rebuild (new `IMAGE_NAME`) and recreate/roll the pool.
   Keep `CONTAINER_IMAGES` in sync with the pod image (calico `metadata.mk`
   `GO_BUILD_VER`).
-- **Project:** the image must live in the cluster's project (or be shared to it).
+- **Project:** the image does NOT have to live in the cluster's project. The
+  `--secondary-boot-disk` value is a fully-qualified path, so a cluster elsewhere
+  can use it once that project's service accounts can read it. Grant
+  `roles/compute.imageUser` on the image's project to BOTH of the cluster
+  project's service accounts:
+
+  ```bash
+  CLUSTER_PROJECT_NUMBER=$(gcloud projects describe <CLUSTER_PROJECT> --format='value(projectNumber)')
+  for sa in "${CLUSTER_PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+            "service-${CLUSTER_PROJECT_NUMBER}@container-engine-robot.iam.gserviceaccount.com"; do
+    gcloud projects add-iam-policy-binding unique-caldron-775 \
+      --member="serviceAccount:${sa}" --role=roles/compute.imageUser
+  done
+  ```
+
+  Missing either one fails node creation, not image creation, so it surfaces late.
   Default `PROJECT` is where the kind-rig CI VMs/secrets live — if the argoci
   cluster is in a different project, set `PROJECT` to that.
 - Preloads container images only — not host binaries or an OS. For host tooling on

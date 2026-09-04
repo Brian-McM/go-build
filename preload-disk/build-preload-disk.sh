@@ -94,7 +94,8 @@ log "preloading: ${CONTAINER_IMAGES}"
 ( cd "$workdir/tools/gke-disk-image-builder" && go run ./cli "${args[@]}" )
 
 log "done: image ${IMAGE_NAME} (project ${PROJECT})"
-log "attach it to a node pool (must be in the cluster's project; image streaming required):"
+log "attach it to a node pool (image streaming required; cross-project is fine --"
+log "see README.md for the compute.imageUser grants a cluster elsewhere needs):"
 log "  gcloud container node-pools create <pool> --cluster=<cluster> --location=<loc> \\"
 log "    --enable-image-streaming \\"
 log "    --secondary-boot-disk=disk-image=projects/${PROJECT}/global/images/${IMAGE_NAME},mode=CONTAINER_IMAGE_CACHE"
