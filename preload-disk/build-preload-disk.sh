@@ -19,7 +19,10 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
 command -v yq >/dev/null || { echo "yq is required to read the pinned versions" >&2; exit 1; }
 
-PROJECT="${PROJECT:-unique-caldron-775}"
+# Default to the project holding the GKE clusters that consume the disk. A node
+# pool CAN reference an image in another project (see README.md), but building it
+# here keeps the image and its consumer together and needs no cross-project IAM.
+PROJECT="${PROJECT:-tigera-cc-dev}"
 ZONE="${ZONE:-us-central1-a}"
 # The node pool pins this exact name in --secondary-boot-disk. Named off the
 # go-build release tag, as the go-build images are, so the disk and the image it
@@ -32,12 +35,13 @@ ZONE="${ZONE:-us-central1-a}"
 # a node pool tries to attach it.
 IMAGE_NAME="${IMAGE_NAME:-$("$REPO/hack/generate-image-name.sh" -p gbp -m 39)}"
 DISK_SIZE_GB="${DISK_SIZE_GB:-20}"
-# The builder VM's network. Not "default": that network is LEGACY in this project
-# (10.240.0.0/16, no subnets at all), and the builder always asks for a subnetwork,
-# so it fails validation with subnetworkResourceDoesNotExist. Point at the network
-# the project's CI VMs actually use.
-NETWORK="${NETWORK:-semaphore-autotest}"
-SUBNET="${SUBNET:-semaphore-autotest}"
+# The builder VM's network. tigera-cc-dev's "default" is an auto-mode network with
+# a real us-central1 subnet, so the defaults work there. Override when building in
+# a project whose "default" is a LEGACY network with no subnets at all -- as
+# unique-caldron-775's is, where the builder fails validation with
+# subnetworkResourceDoesNotExist and needs NETWORK=SUBNET=semaphore-autotest.
+NETWORK="${NETWORK:-default}"
+SUBNET="${SUBNET:-default}"
 GCS_PATH="${GCS_PATH:?set GCS_PATH to a gs:// bucket/path for the builder logs}"
 # Space-separated. Each MUST carry a tag or digest: the cache hits only the exact
 # ref a pod requests, so a floating tag preloads nothing. Defaults to the go-build

@@ -60,8 +60,8 @@ exact tag is also attached as a `go-build-tag` label.
 
 ```bash
 cd preload-disk
-PROJECT=<cluster-project> ZONE=us-central1-a \
-  GCS_PATH=gs://<log-bucket> ./build-preload-disk.sh
+PROJECT=tigera-cc-dev ZONE=us-central1-a \
+  GCS_PATH=gs://gke-argo-disk-images-cc-dev ./build-preload-disk.sh
 ```
 
 ~5–8 min. Knobs (env):

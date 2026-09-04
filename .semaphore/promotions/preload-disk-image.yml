@@ -14,17 +14,20 @@ execution_time_limit:
 # preload-disk/build-preload-disk.sh); this agent drives gcloud + `go run`.
 global_job_config:
   env_vars:
+    # The project holding the GKE clusters that consume the disk. Building it here
+    # keeps the image with its consumer and needs no cross-project IAM; a pool CAN
+    # reference an image elsewhere, but then both the cluster's compute SA and its
+    # GKE service agent need compute.imageUser -- see preload-disk/README.md.
     - name: PROJECT
-      value: unique-caldron-775
+      value: tigera-cc-dev
     - name: ZONE
       value: us-central1-a
     # Daisy scratch/staging bucket the builder requires (uploads its workflow
     # sources + streams the builder VM's serial log here); the SA needs write access.
-    # The image need not live in the GKE cluster's project: --secondary-boot-disk
-    # takes a fully-qualified path. A cluster elsewhere needs compute.imageUser on
-    # this project for its compute SA and GKE service agent -- see preload-disk/README.md.
+    # Must live in PROJECT: the builder VM writes its serial log, so a bucket
+    # elsewhere reintroduces the cross-project IAM that building here avoids.
     - name: GCS_PATH
-      value: gs://gke-argo-disk-images
+      value: gs://gke-argo-disk-images-cc-dev
   # Same secret the projectcalico/calico GCE jobs use; also feeds ADC, which
   # gke-disk-image-builder reads. Needs compute instance/disk/image create+delete
   # and log-bucket write in PROJECT.
