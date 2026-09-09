@@ -14,7 +14,7 @@ GO_SHA256="${GO_SHA256:?set by build-image.sh from images/calico-go-build/versio
 GO_BUILD_IMAGE="${GO_BUILD_IMAGE:?set by build-image.sh from images/calico-go-build/versions.yaml}"
 KUBECTL_VERSION="${KUBECTL_VERSION:?set by build-image.sh from images/calico-go-build/versions.yaml}"
 KIND_VERSION="${KIND_VERSION:?set by build-image.sh from vm-images/ci-base/versions.yaml}"
-KIND_NODE_IMAGE="${KIND_NODE_IMAGE:?set by build-image.sh from vm-images/ci-base/versions.yaml}"
+KIND_NODE_IMAGES="${KIND_NODE_IMAGES:?set by build-image.sh from vm-images/ci-base/versions.yaml}"
 GH_VERSION="${GH_VERSION:?set by build-image.sh from vm-images/ci-base/versions.yaml}"
 
 APT=(apt-get -o DPkg::Lock::Timeout=600 -y)
@@ -61,11 +61,9 @@ EOF
 # --- pre-pull the heavy CI images so jobs skip the pull ---------------------
 # Tags are injected by build-image.sh, so they cannot drift.
 systemctl start docker
-PREPULL_IMAGES=(
-  "$KIND_NODE_IMAGE"
-  "$GO_BUILD_IMAGE"
-  "registry:2"
-)
+PREPULL_IMAGES=("$GO_BUILD_IMAGE" "registry:2")
+# Unquoted on purpose: KIND_NODE_IMAGES is a space-separated list.
+for img in $KIND_NODE_IMAGES; do PREPULL_IMAGES+=("$img"); done
 for img in "${PREPULL_IMAGES[@]}"; do
   retry docker pull "$img" || echo "warn: could not pre-pull $img"
 done

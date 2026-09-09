@@ -4,7 +4,11 @@
 # re-run build-image.sh.
 kind:
   version: v0.33.0
-  # Tracks calico's lib/kind DefaultNodeImage -- bump when that does.
-  node_image: kindest/node:v1.33.7@sha256:d26ef333bdb2cbe9862a0f7c3803ecc7b4303d8cea8e814b481b09949d353040
+  # Every k8s version the rig tests against, all pre-pulled. The first tracks
+  # calico's lib/kind DefaultNodeImage. Each adds ~1.5GB to the image, so add a
+  # version when it is actually tested, not speculatively. Digests, not tags: a
+  # tag would let the cached node image drift from the one kind asks for.
+  node_images:
+    - kindest/node:v1.33.7@sha256:d26ef333bdb2cbe9862a0f7c3803ecc7b4303d8cea8e814b481b09949d353040
 gh:
   version: 2.99.0

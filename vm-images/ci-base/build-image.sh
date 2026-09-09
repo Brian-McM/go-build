@@ -52,9 +52,12 @@ fi
 # build is reproducible from a commit.
 VM_VERSIONS="$HERE/versions.yaml"
 KIND_VERSION="${KIND_VERSION:-$(yq -r '.kind.version' "$VM_VERSIONS")}"
-KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-$(yq -r '.kind.node_image' "$VM_VERSIONS")}"
+# Space-separated: env vars cannot hold arrays, and image refs contain no spaces.
+KIND_NODE_IMAGES="${KIND_NODE_IMAGES:-$(yq -r '.kind.node_images | join(" ")' "$VM_VERSIONS")}"
+[ -n "$KIND_NODE_IMAGES" ] || { echo "kind.node_images is empty in $VM_VERSIONS" >&2; exit 1; }
 GH_VERSION="${GH_VERSION:-$(yq -r '.gh.version' "$VM_VERSIONS")}"
-log "kind $KIND_VERSION (node $KIND_NODE_IMAGE), gh $GH_VERSION (from vm-images/ci-base/versions.yaml)"
+log "kind $KIND_VERSION, gh $GH_VERSION (from vm-images/ci-base/versions.yaml)"
+for img in $KIND_NODE_IMAGES; do log "  node image: $img"; done
 
 # provision.sh runs as the builder's startup-script and cannot read this repo.
 STARTUP="$(mktemp)"
@@ -66,7 +69,7 @@ STARTUP="$(mktemp)"
   printf 'export GO_BUILD_IMAGE=%q\n' "$GO_BUILD_IMAGE"
   printf 'export KUBECTL_VERSION=%q\n' "$KUBECTL_VERSION"
   printf 'export KIND_VERSION=%q\n' "$KIND_VERSION"
-  printf 'export KIND_NODE_IMAGE=%q\n' "$KIND_NODE_IMAGE"
+  printf 'export KIND_NODE_IMAGES=%q\n' "$KIND_NODE_IMAGES"
   printf 'export GH_VERSION=%q\n' "$GH_VERSION"
   tail -n +2 "$HERE/provision.sh" # its shebang is replaced by the one above
 } >"$STARTUP"

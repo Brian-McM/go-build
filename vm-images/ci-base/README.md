@@ -117,12 +117,25 @@ already in the docker group.
 ## Pre-baked docker images
 
 `provision.sh` pre-pulls the heavy images into the image's docker cache so jobs
-skip the pull: `kindest/node` (3 kind clusters), `calico/go-build` (the
-`make build-calico-image` + operator builds), and `registry:2` (the pull-through
-caches + the local helm registry). The `calico/go-build` tag is injected from
-`versions.yaml` (above), so it cannot drift. `kindest/node` is still hardcoded in
-`provision.sh` — it comes from calico's `lib/kind` `DefaultNodeImage` — so re-run
-`build-image.sh` to refresh the image when that bumps.
+skip the pull: every `kind` node image the rig tests against, `calico/go-build`
+(the calico + operator builds), and `registry:2` (pull-through caches, local helm
+registry). The go-build tag is injected from `images/calico-go-build/versions.yaml`
+and the node images from `versions.yaml` here, so neither can drift.
+
+To test another k8s version, add its node image to `kind.node_images`:
+
+```yaml
+kind:
+  node_images:
+    - kindest/node:v1.33.7@sha256:d26ef...
+    - kindest/node:v1.32.5@sha256:...
+```
+
+Pinned by digest rather than tag, so the cached image is exactly the one kind
+asks for. Each version adds roughly 1.5GB to the built image, so add one when it
+is actually tested — the boot disk is 50GB and the snapshot carries whatever is
+in the cache.
+
 
 ## How it works (the four-step image recipe)
 
