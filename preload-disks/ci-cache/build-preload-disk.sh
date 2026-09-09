@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Copyright (c) 2026 Tigera, Inc. All rights reserved.
 #
-# Build a GKE secondary-boot-disk image with calico/go-build preloaded, so build
-# pods skip the pull. Wraps Google's gke-disk-image-builder. See README.md.
+# Build a GKE secondary-boot-disk image with the images CI pulls most already on
+# it, so pods skip the pull. Wraps Google's gke-disk-image-builder. See README.md.
 #
 #   PROJECT=tigera-cc-dev GCS_PATH=gs://<bucket> ./build-preload-disk.sh
 #
@@ -26,7 +26,8 @@ NETWORK="${NETWORK:-default}"
 SUBNET="${SUBNET:-default}"
 GCS_PATH="${GCS_PATH:?set GCS_PATH to a gs:// bucket/path for the builder logs}"
 # Space-separated, each with a tag or digest: the cache hits only the exact ref a
-# pod requests. Defaults to this repo's go-build image, so it cannot drift.
+# pod requests, so a floating tag caches nothing. Add anything CI pulls often; the
+# default is this repo's go-build image, resolved so it cannot drift.
 if [ -z "${CONTAINER_IMAGES:-}" ]; then
   go_build_tag="$("$REPO/hack/generate-version-tag-name.sh" -f "$REPO/images/calico-go-build/versions.yaml")"
   CONTAINER_IMAGES="docker.io/calico/go-build:${go_build_tag}"

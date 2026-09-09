@@ -58,7 +58,7 @@ promotions:
   - name: Build ci-base VM image
     pipeline_file: promotions/ci-base-vm-image.yml
   # Manual only (no auto_promote): trigger from the Semaphore UI to (re)build the
-  # go-build preload disk image. See promotions/preload-disk-image.yml and preload-disks/go-build/.
+  # go-build preload disk image. See promotions/preload-disk-image.yml and preload-disks/ci-cache/.
   - name: Build go-build preload disk image
     pipeline_file: promotions/preload-disk-image.yml
 

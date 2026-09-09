@@ -1,10 +1,10 @@
-# GKE secondary-boot-disk image preloading
+# CI container-image cache (GKE secondary boot disk)
 
-A GCE **disk image** with heavy container images baked in, attached to a GKE node
-pool as a **secondary boot disk** so pods start with those images already on the
-node — no pull. Built for the argoci build pools: preloading `calico/go-build`
-removes the multi-hundred-MB go-build pull that every kind-rig `build-artifacts`
-run (and any other go-build CI step) otherwise pays.
+A GCE **disk image** with the container images CI pulls most baked in, attached to
+a GKE node pool as a **secondary boot disk** so pods start with them already on the
+node — no pull. Not specific to any one image or pipeline: add whatever a pool
+pulls often. Today that is `calico/go-build`, which removes the multi-hundred-MB
+pull every go-build CI step otherwise pays.
 
 This is the GKE-native equivalent of the raw-VM [`vm-images/ci-base`](../../vm-images/ci-base) baking:
 you can't give a managed node pool a custom OS image, but you *can* preload
@@ -16,7 +16,7 @@ container images onto it via a secondary disk.
   (`github.com/ai-on-gke/tools`, `gke-disk-image-builder`):
   it spins up a throwaway builder VM, pulls the images onto a data disk in the
   containerd image-streaming layout, snapshots that disk into a GCE image, and
-  deletes the builder. Prints the `gcloud` line to attach the result.
+  deletes the builder.
 - **`versions.yaml`** — the upstream commit the builder is fetched at.
 
 ### Why fetch it instead of importing it
@@ -59,7 +59,7 @@ exact tag is also attached as a `go-build-tag` label.
 ## Build
 
 ```bash
-cd preload-disks/go-build
+cd preload-disks/ci-cache
 PROJECT=tigera-cc-dev ZONE=us-central1-a \
   GCS_PATH=gs://gke-argo-disk-images-cc-dev ./build-preload-disk.sh
 ```
