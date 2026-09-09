@@ -5,7 +5,7 @@
 # build pods start with it already on the node -- no multi-hundred-MB pull per run.
 # Wraps Google's gke-disk-image-builder (github.com/ai-on-gke/tools): a throwaway
 # builder VM pulls the images onto a data disk in the containerd image-streaming
-# layout and snapshots it. Attach the result to a node pool (README.md).
+# layout and snapshots it. See README.md for attaching the result to a node pool.
 #
 #   PROJECT=<cluster-project> ZONE=us-central1-a \
 #   GCS_PATH=gs://<log-bucket> ./build-preload-disk.sh
@@ -103,8 +103,3 @@ log "preloading: ${CONTAINER_IMAGES}"
 ( cd "$workdir/tools/gke-disk-image-builder" && go run ./cli "${args[@]}" )
 
 log "done: image ${IMAGE_NAME} (project ${PROJECT}, ${#IMAGE_NAME}/39 chars)"
-log "attach it to a node pool (image streaming required; cross-project is fine --"
-log "see README.md for the compute.imageUser grants a cluster elsewhere needs):"
-log "  gcloud container node-pools create <pool> --cluster=<cluster> --location=<loc> \\"
-log "    --enable-image-streaming \\"
-log "    --secondary-boot-disk=disk-image=projects/${PROJECT}/global/images/${IMAGE_NAME},mode=CONTAINER_IMAGE_CACHE"
