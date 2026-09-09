@@ -67,3 +67,48 @@ func TestMustLocalSecretErrorsWhenUnset(t *testing.T) {
 		t.Fatal("want an error for a required-but-unset secret")
 	}
 }
+
+// The key used to go to a fixed /tmp path, which os.WriteFile would follow a
+// symlink to. CreateTemp opens O_EXCL with a random name at 0600.
+func TestSetupComputeADCUsesAPrivateUniqueFile(t *testing.T) {
+	t.Setenv("COMPUTE_SA_KEY", "")
+	t.Setenv("COMPUTE_SA_ENV", "TEST_SA_JSON")
+	t.Setenv("TEST_SA_JSON", `{"type":"service_account"}`)
+
+	var paths []string
+	for range 2 {
+		if err := SetupComputeADC(); err != nil {
+			t.Fatalf("SetupComputeADC: %v", err)
+		}
+		p := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
+		paths = append(paths, p)
+		t.Cleanup(func() { os.Remove(p) })
+
+		got, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != `{"type":"service_account"}` {
+			t.Errorf("content = %q", got)
+		}
+		fi, err := os.Stat(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if perm := fi.Mode().Perm(); perm != 0o600 {
+			t.Errorf("mode = %#o, want 0600", perm)
+		}
+	}
+	// Two runs in one namespace must not fight over the same file.
+	if paths[0] == paths[1] {
+		t.Errorf("both runs used the same path %q", paths[0])
+	}
+}
+
+func TestSetupComputeADCErrorsWhenTheEnvVarIsMissing(t *testing.T) {
+	t.Setenv("COMPUTE_SA_KEY", "")
+	t.Setenv("COMPUTE_SA_ENV", "TEST_SA_DEFINITELY_UNSET")
+	if err := SetupComputeADC(); err == nil {
+		t.Fatal("want an error when the named env var is unset")
+	}
+}

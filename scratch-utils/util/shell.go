@@ -10,8 +10,10 @@ import (
 
 // ShellQuote single-quotes s for a POSIX shell: an embedded apostrophe is closed,
 // backslash-escaped and reopened, so any value survives verbatim. The literal
-// escape is only in the code below -- gofmt rewrites a doubled apostrophe in a
-// comment into a curly quote, so it cannot be spelled here.
+// escape appears only in the code below, because gofmt reformats DOC comments
+// (Go 1.19+) and applies godoc's old quoting convention, turning a doubled
+// apostrophe into a right curly quote. Plain comments inside a function body are
+// left alone; this one is attached to a declaration, so it is not.
 //
 // Use this, never fmt %q, for anything interpolated into a remote command. %q
 // emits a Go double-quoted string, and bash still expands $(...) and backticks

@@ -9,11 +9,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"time"
 
 	compute "google.golang.org/api/compute/v1"
+	"google.golang.org/api/googleapi"
 )
 
 // Config describes the VM to create. Zones are tried in order (capacity), and the
@@ -218,8 +220,11 @@ func sourceImage(cfg Config) string {
 	return fmt.Sprintf("projects/%s/global/images/family/%s", cfg.ImageProject, cfg.ImageFamily)
 }
 
+// isNotFound reports a 404 from the compute API. Matching the status beats
+// matching the message: the prose varies by endpoint and could change under us.
 func isNotFound(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "notFound")
+	var gerr *googleapi.Error
+	return errors.As(err, &gerr) && gerr.Code == http.StatusNotFound
 }
 
 func strPtr(s string) *string { return &s }

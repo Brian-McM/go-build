@@ -102,9 +102,23 @@ if [ -z "$ready" ]; then
   exit 1
 fi
 
-log "installed tool versions + pre-pulled images:"
-gcloud --quiet compute ssh "ubuntu@$BUILDER" --project="$PROJECT" --zone="$ZONE" \
-  --command='docker --version; /usr/local/go/bin/go version; kind version; kubectl version --client 2>/dev/null | head -1; gh --version | head -1; echo "--- baked images ---"; sudo docker images --format "{{.Repository}}:{{.Tag}} ({{.Size}})"' || true
+# Enforcing, not informational: every binary must run and the go-build image must
+# be in the cache. This used to end in `|| true` and pipe through `head`, so a
+# broken download or a failed pre-pull still published an image.
+log "verifying the toolchain before snapshotting"
+if ! gcloud --quiet compute ssh "ubuntu@$BUILDER" --project="$PROJECT" --zone="$ZONE" \
+  --command="set -e
+    docker --version
+    /usr/local/go/bin/go version
+    kind version
+    kubectl version --client
+    gh --version
+    echo '--- baked images ---'
+    sudo docker images --format '{{.Repository}}:{{.Tag}} ({{.Size}})'
+    sudo docker image inspect $(printf %q "$GO_BUILD_IMAGE") >/dev/null"; then
+  log "verification FAILED -- not publishing an image from this builder"
+  exit 1
+fi
 
 log "stopping builder for a consistent disk"
 gcloud --quiet compute instances stop "$BUILDER" --project="$PROJECT" --zone="$ZONE"

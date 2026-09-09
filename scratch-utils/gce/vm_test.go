@@ -4,8 +4,12 @@ package gce
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
+
+	"google.golang.org/api/googleapi"
 )
 
 // The family path always yields the newest member, so pinning an exact image is
@@ -90,6 +94,30 @@ func TestCreateReportsUnattemptedZonesSeparately(t *testing.T) {
 	for _, z := range []string{"z-a", "z-b", "z-c"} {
 		if !strings.Contains(got, z+": not attempted") {
 			t.Errorf("error should name %s as not attempted; got: %s", z, got)
+		}
+	}
+}
+
+// Delete treats a not-found instance as already deleted, so this decides whether
+// a cleanup step is idempotent or spuriously fails.
+func TestIsNotFound(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"googleapi 404", &googleapi.Error{Code: 404, Message: "not found"}, true},
+		{"googleapi 404 wrapped", fmt.Errorf("delete vm: %w", &googleapi.Error{Code: 404}), true},
+		{"googleapi 403", &googleapi.Error{Code: 403, Message: "forbidden"}, false},
+		{"googleapi 500", &googleapi.Error{Code: 500}, false},
+		// A permission error whose prose happens to contain the old sentinel must
+		// not be read as "already gone", or cleanup would silently skip a live VM.
+		{"prose mentioning notFound", errors.New("caller lacks permission; resource notFound checks disabled"), false},
+		{"unrelated", errors.New("connection reset"), false},
+	} {
+		if got := isNotFound(tc.err); got != tc.want {
+			t.Errorf("%s: isNotFound = %v, want %v", tc.name, got, tc.want)
 		}
 	}
 }

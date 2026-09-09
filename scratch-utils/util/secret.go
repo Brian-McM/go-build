@@ -54,10 +54,23 @@ func SetupComputeADC() error {
 	if name == "" {
 		name = "banzai-google-service-account.json"
 	}
-	dest := filepath.Join(os.TempDir(), "compute-sa.json")
-	if err := MustLocalSecret(name, dest); err != nil {
-		return fmt.Errorf("compute SA: %w (set COMPUTE_SA_KEY to a mounted key file, or COMPUTE_SA_ENV to the key's env var name)", err)
+	v, ok := os.LookupEnv(name)
+	if !ok {
+		return fmt.Errorf("compute SA: env var %q not set (set COMPUTE_SA_KEY to a mounted key file, or COMPUTE_SA_ENV to the key's env var name)", name)
 	}
-	os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", dest)
+	// CreateTemp, not a fixed /tmp path: it opens O_EXCL at mode 0600 with a random
+	// name, so it cannot follow a pre-planted symlink or collide with another run.
+	f, err := os.CreateTemp("", "compute-sa-*.json")
+	if err != nil {
+		return fmt.Errorf("compute SA: %w", err)
+	}
+	if _, err := f.WriteString(v); err != nil {
+		f.Close()
+		return fmt.Errorf("compute SA: write %s: %w", f.Name(), err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("compute SA: close %s: %w", f.Name(), err)
+	}
+	os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", f.Name())
 	return nil
 }

@@ -36,20 +36,25 @@ usermod -a -G docker ubuntu
 systemctl enable docker
 
 # --- go / kind / kubectl / gh (all pinned) ----------------------------------
-curl -sSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz
+# -f on every download: without it curl exits 0 on an HTTP error and writes the
+# error page to the output file, so a 404 would install an HTML "kind" and the
+# image would build clean and ship broken. Only go has a checksum to catch it.
+fetch() { retry curl -fsSL --retry-connrefused -o "$1" "$2"; }
+
+fetch /tmp/go.tgz "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
 # Checksum from versions.yaml, as the go-build Dockerfile does.
 echo "${GO_SHA256}  /tmp/go.tgz" | sha256sum -c -
 rm -rf /usr/local/go && tar -C /usr/local -xzf /tmp/go.tgz
 # go + a per-user GOBIN on PATH for interactive + non-interactive shells.
 printf 'export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin\n' > /etc/profile.d/go.sh
 
-curl -sSLo /usr/local/bin/kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
+fetch /usr/local/bin/kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-amd64"
 chmod 0755 /usr/local/bin/kind
 
-curl -sSLo /usr/local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+fetch /usr/local/bin/kubectl "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
 chmod 0755 /usr/local/bin/kubectl
 
-curl -sSLo /tmp/gh.tgz "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz"
+fetch /tmp/gh.tgz "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz"
 tar -C /tmp -xzf /tmp/gh.tgz && install -m 0755 "/tmp/gh_${GH_VERSION}_linux_amd64/bin/gh" /usr/local/bin/gh
 
 # --- inotify limits for 3 kind clusters (persist across boots) --------------
