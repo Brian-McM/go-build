@@ -71,7 +71,7 @@ func run(ctx context.Context) error {
 		MachineType: envOr("GOOGLE_VM_MACHINE_TYPE", "n2-standard-16"),
 		DiskType:    envOr("GOOGLE_VM_DISK_TYPE", "pd-ssd"),
 		DiskSizeGB:  diskGB,
-		// ci-base has the toolchain baked in (built by vm-image/build-image.sh), so
+		// ci-base has the toolchain baked in (built by vm-images/ci-base/build-image.sh), so
 		// the VM boots ready and the job does no installs. Override for stock Ubuntu.
 		// GOOGLE_VM_IMAGE pins one exact image (e.g.
 		// ci-base-1-27-0-llvm21-1-8-k8s1-37-0) so the image can be rolled without

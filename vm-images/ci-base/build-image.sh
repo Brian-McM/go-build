@@ -7,7 +7,7 @@
 # tooled, no per-run installs). Re-run any time to pick up newer tools -- the
 # family means createvm automatically gets the newest image.
 #
-#   PROJECT=unique-caldron-775 ZONE=us-central1-a FAMILY=ci-base ./vm-image/build-image.sh
+#   PROJECT=unique-caldron-775 ZONE=us-central1-a FAMILY=ci-base ./vm-images/ci-base/build-image.sh
 #
 # Needs: gcloud and yq, gcloud authed as an identity with compute instance + image
 # create/delete in PROJECT. Takes ~3-4 min.
@@ -18,7 +18,7 @@ ZONE="${ZONE:-us-central1-a}"
 FAMILY="${FAMILY:-ci-base}"
 BUILDER="${BUILDER:-ci-img-builder-$$}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
-REPO="$(cd "$HERE/.." && pwd)"
+REPO="$(cd "$HERE/../.." && pwd)"
 
 log() { echo "[build-image] $*"; }
 
@@ -62,7 +62,7 @@ VM_VERSIONS="$HERE/versions.yaml"
 KIND_VERSION="${KIND_VERSION:-$(yq -r '.kind.version' "$VM_VERSIONS")}"
 KIND_NODE_IMAGE="${KIND_NODE_IMAGE:-$(yq -r '.kind.node_image' "$VM_VERSIONS")}"
 GH_VERSION="${GH_VERSION:-$(yq -r '.gh.version' "$VM_VERSIONS")}"
-log "kind $KIND_VERSION (node $KIND_NODE_IMAGE), gh $GH_VERSION (from vm-image/versions.yaml)"
+log "kind $KIND_VERSION (node $KIND_NODE_IMAGE), gh $GH_VERSION (from vm-images/ci-base/versions.yaml)"
 
 # provision.sh runs as the builder's startup-script, where it cannot read this
 # repo, so bake the versions in as a preamble.

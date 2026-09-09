@@ -11,13 +11,13 @@ execution_time_limit:
 # Manual-only (no auto_promote in semaphore.yml): trigger from the Semaphore UI to
 # (re)build the GKE secondary-boot-disk image preloading calico/go-build. The work
 # runs on a throwaway builder VM via Google's gke-disk-image-builder (see
-# preload-disk/build-preload-disk.sh); this agent drives gcloud + `go run`.
+# preload-disks/go-build/build-preload-disk.sh); this agent drives gcloud + `go run`.
 global_job_config:
   env_vars:
     # The project holding the GKE clusters that consume the disk. Building it here
     # keeps the image with its consumer and needs no cross-project IAM; a pool CAN
     # reference an image elsewhere, but then both the cluster's compute SA and its
-    # GKE service agent need compute.imageUser -- see preload-disk/README.md.
+    # GKE service agent need compute.imageUser -- see preload-disks/go-build/README.md.
     - name: PROJECT
       value: tigera-cc-dev
     - name: ZONE
@@ -51,4 +51,4 @@ blocks:
       jobs:
         - name: build-preload-disk
           commands:
-            - bash preload-disk/build-preload-disk.sh
+            - bash preload-disks/go-build/build-preload-disk.sh

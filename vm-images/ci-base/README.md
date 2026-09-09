@@ -16,7 +16,7 @@ image-build time, once).
 ## Build / refresh the image
 
 ```bash
-PROJECT=unique-caldron-775 ZONE=us-central1-a FAMILY=ci-base ./vm-image/build-image.sh
+PROJECT=unique-caldron-775 ZONE=us-central1-a FAMILY=ci-base ./vm-images/ci-base/build-image.sh
 ```
 
 Runs from anywhere — it resolves the repo (and

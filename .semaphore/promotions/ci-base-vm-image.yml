@@ -10,11 +10,11 @@ execution_time_limit:
 
 # Manual-only (no auto_promote in semaphore.yml): trigger from the Semaphore UI to
 # (re)build the ci-base GCE VM image. The work runs on a throwaway builder VM (see
-# vm-image/build-image.sh); this agent just drives gcloud. The image lives in a
+# vm-images/ci-base/build-image.sh); this agent just drives gcloud. The image lives in a
 # family, so createvm always gets the newest.
 #
 # The baked toolchain is pinned: Go and calico/go-build from
-# images/calico-go-build/versions.yaml, kind/gh from vm-image/versions.yaml. Re-run
+# images/calico-go-build/versions.yaml, kind/gh from vm-images/ci-base/versions.yaml. Re-run
 # after bumping either.
 global_job_config:
   env_vars:
@@ -44,4 +44,4 @@ blocks:
       jobs:
         - name: build-image
           commands:
-            - bash vm-image/build-image.sh
+            - bash vm-images/ci-base/build-image.sh

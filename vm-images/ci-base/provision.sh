@@ -16,10 +16,10 @@ GO_VERSION="${GO_VERSION:?set by build-image.sh from images/calico-go-build/vers
 GO_SHA256="${GO_SHA256:?set by build-image.sh from images/calico-go-build/versions.yaml}"
 GO_BUILD_IMAGE="${GO_BUILD_IMAGE:?set by build-image.sh from images/calico-go-build/versions.yaml}"
 KUBECTL_VERSION="${KUBECTL_VERSION:?set by build-image.sh from images/calico-go-build/versions.yaml}"
-# kind and gh are pinned in vm-image/versions.yaml.
-KIND_VERSION="${KIND_VERSION:?set by build-image.sh from vm-image/versions.yaml}"
-KIND_NODE_IMAGE="${KIND_NODE_IMAGE:?set by build-image.sh from vm-image/versions.yaml}"
-GH_VERSION="${GH_VERSION:?set by build-image.sh from vm-image/versions.yaml}"
+# kind and gh are pinned in vm-images/ci-base/versions.yaml.
+KIND_VERSION="${KIND_VERSION:?set by build-image.sh from vm-images/ci-base/versions.yaml}"
+KIND_NODE_IMAGE="${KIND_NODE_IMAGE:?set by build-image.sh from vm-images/ci-base/versions.yaml}"
+GH_VERSION="${GH_VERSION:?set by build-image.sh from vm-images/ci-base/versions.yaml}"
 
 APT=(apt-get -o DPkg::Lock::Timeout=600 -y)
 retry() { local n=8; for i in $(seq 1 $n); do "$@" && return 0; echo "retry $i/$n: $*"; sleep 5; done; return 1; }

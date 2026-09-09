@@ -54,11 +54,11 @@ promotions:
     auto_promote:
       when: "branch = 'master' AND change_in(['/images/calico-scratch-utils/', '/cmd/scratch-utils/', '/scratch-utils/'])"
   # Manual only (no auto_promote): trigger from the Semaphore UI to (re)build the
-  # ci-base GCE VM image. See promotions/ci-base-vm-image.yml and vm-image/.
+  # ci-base GCE VM image. See promotions/ci-base-vm-image.yml and vm-images/ci-base/.
   - name: Build ci-base VM image
     pipeline_file: promotions/ci-base-vm-image.yml
   # Manual only (no auto_promote): trigger from the Semaphore UI to (re)build the
-  # go-build preload disk image. See promotions/preload-disk-image.yml and preload-disk/.
+  # go-build preload disk image. See promotions/preload-disk-image.yml and preload-disks/go-build/.
   - name: Build go-build preload disk image
     pipeline_file: promotions/preload-disk-image.yml
 

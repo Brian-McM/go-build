@@ -6,7 +6,7 @@ node — no pull. Built for the argoci build pools: preloading `calico/go-build`
 removes the multi-hundred-MB go-build pull that every kind-rig `build-artifacts`
 run (and any other go-build CI step) otherwise pays.
 
-This is the GKE-native equivalent of the raw-VM [`vm-image`](../vm-image) baking:
+This is the GKE-native equivalent of the raw-VM [`vm-images/ci-base`](../../vm-images/ci-base) baking:
 you can't give a managed node pool a custom OS image, but you *can* preload
 container images onto it via a secondary disk.
 
@@ -59,7 +59,7 @@ exact tag is also attached as a `go-build-tag` label.
 ## Build
 
 ```bash
-cd preload-disk
+cd preload-disks/go-build
 PROJECT=tigera-cc-dev ZONE=us-central1-a \
   GCS_PATH=gs://gke-argo-disk-images-cc-dev ./build-preload-disk.sh
 ```
@@ -131,10 +131,10 @@ event is not `Pulling` for seconds).
   Default `PROJECT` is where the kind-rig CI VMs/secrets live — if the argoci
   cluster is in a different project, set `PROJECT` to that.
 - Preloads container images only — not host binaries or an OS. For host tooling on
-  a raw CI VM, that's [`vm-image`](../vm-image).
+  a raw CI VM, that's [`vm-images/ci-base`](../../vm-images/ci-base).
 
 ## Automating it
 
-Like `vm-image`, this is a script today; a Semaphore block + promotion (build the
+Like `vm-images/ci-base`, this is a script today; a Semaphore block + promotion (build the
 disk image on merge to master / release branches, as for the scratch-utils/ci-base
 images) can be layered on later.

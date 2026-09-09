@@ -16,7 +16,7 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-REPO="$(cd "$HERE/.." && pwd)"
+REPO="$(cd "$HERE/../.." && pwd)"
 command -v yq >/dev/null || { echo "yq is required to read the pinned versions" >&2; exit 1; }
 
 # Default to the project holding the GKE clusters that consume the disk. A node
