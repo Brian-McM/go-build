@@ -47,6 +47,12 @@ global_job_config:
 blocks:
   - name: Build preload disk image
     dependencies: []
+    run:
+      # Same gate as calico-go-build.yml's blocks. auto_promote does not restrict a
+      # MANUAL promotion, so without this anyone could promote from a PR and spend a
+      # builder VM on a branch-named image; on a PR the branch is pull-request-N, so
+      # neither side matches and the block is skipped.
+      when: "branch = 'master' OR tag =~ '^1\\.\\d+\\.\\d+-llvm\\d+\\.\\d\\.\\d-k8s1\\.\\d+\\.\\d+'"
     task:
       jobs:
         - name: build-preload-disk
