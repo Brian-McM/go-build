@@ -27,7 +27,9 @@ func TestParseDiskGB(t *testing.T) {
 }
 
 func TestParseDiskGBRejectsGarbage(t *testing.T) {
-	for _, in := range []string{"", "GB", "200GBx", "two hundred", "200TB"} {
+	// A non-positive size parses fine but reaches the GCE API and fails there,
+	// a long way from the env var that caused it.
+	for _, in := range []string{"", "GB", "200GBx", "two hundred", "200TB", "0", "0GB", "-10GB", "-1"} {
 		if _, err := parseDiskGB(in); err == nil {
 			t.Errorf("parseDiskGB(%q) accepted garbage", in)
 		}

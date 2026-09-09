@@ -114,6 +114,9 @@ func parseDiskGB(s string) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("GOOGLE_VM_DISK_SIZE %q: want e.g. 200GB: %w", s, err)
 	}
+	if n <= 0 {
+		return 0, fmt.Errorf("GOOGLE_VM_DISK_SIZE %q: must be positive", s)
+	}
 	return n, nil
 }
 

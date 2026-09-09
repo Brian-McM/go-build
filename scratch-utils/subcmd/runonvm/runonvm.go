@@ -171,12 +171,18 @@ func run(ctx context.Context) int {
 	if len(envs) > 0 {
 		var b strings.Builder
 		for _, name := range envs {
+			// The value is quoted, but the NAME is interpolated bare, so a name like
+			// "FOO; rm -rf /" would run when the script sources this file.
+			if err := util.CheckShellName(name); err != nil {
+				fmt.Fprintf(os.Stderr, "runonvm: --env %v\n", err)
+				return 2
+			}
 			val, present := os.LookupEnv(name)
 			if !present {
 				fmt.Fprintf(os.Stderr, "[runonvm] --env %s not set, skipping\n", name)
 				continue
 			}
-			fmt.Fprintf(&b, "export %s=%s\n", name, shellQuote(val))
+			fmt.Fprintf(&b, "export %s=%s\n", name, util.ShellQuote(val))
 			haveEnv = true
 		}
 		if haveEnv {
@@ -205,14 +211,6 @@ func run(ctx context.Context) int {
 	}
 	fmt.Printf("[runonvm] script finished (rc=%d)\n", code)
 	return code
-}
-
-// shellQuote single-quotes s for a POSIX shell: an embedded apostrophe is closed,
-// backslash-escaped and reopened, so any value survives verbatim. The literal
-// escape is only in the code below -- gofmt rewrites a doubled apostrophe in a
-// comment into a curly quote, so it cannot be spelled here.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // splitPair splits "A:B" on the first colon.

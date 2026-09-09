@@ -26,8 +26,10 @@ command -v yq >/dev/null || { echo "yq is required to read the pinned versions" 
 PROJECT="${PROJECT:-tigera-cc-dev}"
 ZONE="${ZONE:-us-central1-a}"
 # A node pool pins this exact name. GKE caps it at 39 chars (GCE allows 63) and
-# only enforces that on attach, so -m fails here instead; hence the terse prefix.
-IMAGE_NAME="${IMAGE_NAME:-$("$REPO/hack/generate-image-name.sh" -p gbp -m 39)}"
+# only enforces that on attach, so -m fails here instead. "cic" rather than
+# "ci-cache" because the full go-build tag needs the room: a release-candidate tag
+# is 34 characters on its own.
+IMAGE_NAME="${IMAGE_NAME:-$("$REPO/hack/generate-image-name.sh" -p cic -m 39)}"
 DISK_SIZE_GB="${DISK_SIZE_GB:-20}"
 # Override where "default" is a legacy network with no subnets (unique-caldron-775
 # is one): the builder demands a subnetwork and fails validation without it.

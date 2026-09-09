@@ -15,8 +15,10 @@ import (
 	"github.com/projectcalico/go-build/scratch-utils/util"
 )
 
-// Run executes the deletevm subcommand and returns its exit code. Best-effort:
-// any failure returns 0 (the VM's max-run-duration is the backstop).
+// Run executes the deletevm subcommand and returns its exit code. Every failure to
+// delete returns 0 -- the VM's max-run-duration is the backstop, so a cleanup step
+// should not fail the workflow. A missing VM_NAME is not that: it means the step is
+// misconfigured and deleted nothing, which is worth failing on.
 func Run() int {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()

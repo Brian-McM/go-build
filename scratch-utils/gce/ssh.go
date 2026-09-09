@@ -24,6 +24,8 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	compute "google.golang.org/api/compute/v1"
+
+	"github.com/projectcalico/go-build/scratch-utils/util"
 )
 
 // SSH is a live connection to a VM. Close it when done.
@@ -180,9 +182,11 @@ func (s *SSH) PutData(data []byte, remote string, mode os.FileMode) error {
 	// Capture remote stderr so a failing mkdir/chmod says why.
 	var errBuf bytes.Buffer
 	sess.Stderr = &errBuf
-	// `cat >` reads stdin; quoting is on paths we control.
-	cmd := fmt.Sprintf("mkdir -p %q && cat > %q && chmod %o %q",
-		filepath.Dir(remote), remote, mode.Perm(), remote)
+	// Single-quoted, not %q: %q is double-quoted, and bash expands $(...) inside
+	// double quotes, so a crafted remote path would execute on the VM.
+	q := util.ShellQuote(remote)
+	cmd := fmt.Sprintf("mkdir -p %s && cat > %s && chmod %o %s",
+		util.ShellQuote(filepath.Dir(remote)), q, mode.Perm(), q)
 	if err := sess.Run(cmd); err != nil {
 		return fmt.Errorf("put %s: %w: %s", remote, err, strings.TrimSpace(errBuf.String()))
 	}
@@ -221,7 +225,8 @@ func (s *SSH) PutDir(localDir, remoteDir string) error {
 	var errBuf bytes.Buffer
 	sess.Stderr = &errBuf
 
-	cmd := fmt.Sprintf("mkdir -p %q && tar xzf - -C %q", remoteDir, remoteDir)
+	q := util.ShellQuote(remoteDir)
+	cmd := fmt.Sprintf("mkdir -p %s && tar xzf - -C %s", q, q)
 	if err := sess.Run(cmd); err != nil {
 		return fmt.Errorf("put dir %s: %w: %s", remoteDir, err, strings.TrimSpace(errBuf.String()))
 	}
@@ -248,7 +253,7 @@ func (s *SSH) GetDir(remoteDir, localDir string) error {
 		return err
 	}
 	// Tar the contents (not the dir itself) so they land directly under localDir.
-	cmd := fmt.Sprintf("cd %q 2>/dev/null && tar czf - . || true", remoteDir)
+	cmd := fmt.Sprintf("cd %s 2>/dev/null && tar czf - . || true", util.ShellQuote(remoteDir))
 	if err := sess.Start(cmd); err != nil {
 		return err
 	}
