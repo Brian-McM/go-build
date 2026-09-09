@@ -3,7 +3,7 @@
 #
 # Provisioner for the ci-base VM image -- any CI job needing docker/go/kubectl on a
 # GCE VM. Runs once as a throwaway builder's startup-script; its disk becomes the
-# image (README.md). Publishes /var/run/provision-done when finished.
+# image. Publishes /var/run/provision-done when finished.
 set -xeuo pipefail
 export DEBIAN_FRONTEND=noninteractive
 

@@ -17,7 +17,7 @@ global_job_config:
     # The project holding the GKE clusters that consume the disk. Building it here
     # keeps the image with its consumer and needs no cross-project IAM; a pool CAN
     # reference an image elsewhere, but then both the cluster's compute SA and its
-    # GKE service agent need compute.imageUser -- see preload-disks/ci-cache/README.md.
+    # GKE service agent need compute.imageUser -- see the build script's header.
     - name: PROJECT
       value: tigera-cc-dev
     - name: ZONE

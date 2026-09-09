@@ -2,18 +2,27 @@
 # Copyright (c) 2026 Tigera, Inc. All rights reserved.
 #
 # Build a GKE secondary-boot-disk image with the images CI pulls most already on
-# it, so pods skip the pull. Wraps Google's gke-disk-image-builder. See README.md.
+# it, so pods skip the pull. Wraps Google's gke-disk-image-builder.
 #
 #   PROJECT=tigera-cc-dev GCS_PATH=gs://<bucket> ./build-preload-disk.sh
 #
-# Needs gcloud, git, yq and a Go toolchain. ~5-8 min.
+# Needs gcloud, git, yq and a Go toolchain. ~5-8 min. Attach the result at node
+# pool CREATE time (there is no update flag for it), with image streaming on:
+#
+#   gcloud container node-pools create <pool> --cluster=<c> --location=<l> \
+#     --enable-image-streaming \
+#     --secondary-boot-disk=disk-image=projects/$PROJECT/global/images/<IMAGE>,mode=CONTAINER_IMAGE_CACHE
+#
+# A cluster in another project needs roles/compute.imageUser on this one for BOTH
+# its default compute SA and its service-<num>@container-engine-robot SA. Missing
+# either fails NODE creation, not pool creation, so it surfaces far from the cause.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 command -v yq >/dev/null || { echo "yq is required to read the pinned versions" >&2; exit 1; }
 
-# The clusters' own project: cross-project works but needs extra IAM (README.md).
+# The clusters' own project: cross-project works but needs the IAM noted above.
 PROJECT="${PROJECT:-tigera-cc-dev}"
 ZONE="${ZONE:-us-central1-a}"
 # A node pool pins this exact name. GKE caps it at 39 chars (GCE allows 63) and
