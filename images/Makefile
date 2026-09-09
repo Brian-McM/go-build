@@ -117,9 +117,15 @@ calico-scratch-utils-image: build
 	$(DOCKER_BUILD) -t $(CALICO_SCRATCH_UTILS):$(CALICO_SCRATCH_UTILS_IMAGETAG)-amd64 -f calico-scratch-utils/Dockerfile calico-scratch-utils/
 	$(MAKE) BUILD_IMAGES=$(CALICO_SCRATCH_UTILS) retag-build-images-with-registries VALIDARCHES=amd64 LATEST_IMAGE_TAG=$(CALICO_SCRATCH_UTILS_IMAGETAG) IMAGETAG=$(CALICO_SCRATCH_UTILS_IMAGETAG)
 
+# IMAGETAG is the pushed tag, LATEST_IMAGE_TAG the local one built above. A tag
+# build pushes the immutable :vX.Y (BRANCH_NAME is the stripped git tag); master
+# pushes the moving :master and :latest.
 .PHONY: calico-scratch-utils-cd
-calico-scratch-utils-cd: calico-scratch-utils-image var-require-one-of-CONFIRM-DRYRUN
-	$(MAKE) BUILD_IMAGES=$(CALICO_SCRATCH_UTILS) retag-build-images-with-registries push-images-to-registries IMAGETAG=$(CALICO_SCRATCH_UTILS_IMAGETAG) LATEST_IMAGE_TAG=$(CALICO_SCRATCH_UTILS_IMAGETAG) VALIDARCHES=amd64 EXCLUDEARCH="$(EXCLUDEARCH)"
+calico-scratch-utils-cd: calico-scratch-utils-image var-require-one-of-CONFIRM-DRYRUN var-require-all-BRANCH_NAME
+	$(MAKE) BUILD_IMAGES=$(CALICO_SCRATCH_UTILS) retag-build-images-with-registries push-images-to-registries IMAGETAG=$(BRANCH_NAME) LATEST_IMAGE_TAG=$(CALICO_SCRATCH_UTILS_IMAGETAG) VALIDARCHES=amd64 EXCLUDEARCH="$(EXCLUDEARCH)"
+ifeq ($(BRANCH_NAME),master)
+	$(MAKE) BUILD_IMAGES=$(CALICO_SCRATCH_UTILS) retag-build-images-with-registries push-images-to-registries IMAGETAG=latest LATEST_IMAGE_TAG=$(CALICO_SCRATCH_UTILS_IMAGETAG) VALIDARCHES=amd64 EXCLUDEARCH="$(EXCLUDEARCH)"
+endif
 
 ################################################################################
 # Calico rust-build image with Rust toolchain.

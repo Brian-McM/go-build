@@ -48,11 +48,13 @@ promotions:
     pipeline_file: promotions/calico-tinygo.yml
     auto_promote:
       when: "branch = 'master' AND change_in('/images/calico-tinygo/')"
-  # Publish scratch-utils images for master when the binary or image changed.
+  # master publishes a moving :master, so any change ships -- including a bare
+  # go.mod bump, which no change_in path would have caught. A scratch-utils-v* tag
+  # publishes the immutable :vX.Y that workflows pin.
   - name: Publish calico/scratch-utils images
     pipeline_file: promotions/calico-scratch-utils.yml
     auto_promote:
-      when: "branch = 'master' AND change_in(['/images/calico-scratch-utils/', '/cmd/scratch-utils/', '/scratch-utils/'])"
+      when: "branch = 'master' OR tag =~ '^scratch-utils-v'"
   # Manual only (no auto_promote): trigger from the Semaphore UI to (re)build the
   # ci-base GCE VM image. See promotions/ci-base-vm-image.yml and vm-images/ci-base/.
   - name: Build ci-base VM image
