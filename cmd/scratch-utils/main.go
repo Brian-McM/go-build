@@ -4,15 +4,13 @@
 // subcommand -- one image, different args, not four binaries:
 //
 //	scratch-utils createvm                       create the CI GCE VM (config from env)
-//	scratch-utils deletevm                       delete it by name (best-effort cleanup)
-//	scratch-utils secret <ENV_VAR> <DEST_PATH>   materialize a mounted-secret env var to a file
+//	scratch-utils deletevm                       delete it by name, best-effort
+//	scratch-utils secret <ENV_VAR> <DEST_PATH>   env var -> file
 //	scratch-utils runonvm [flags] <script>       run a script on the VM over SSH
 //
-// It has no gcloud/bash dependency, so it runs from a scratch/distroless image.
-//
-// The image ENTRYPOINT is this binary, so in a pod the subcommand is an ARGUMENT:
-// `args: [createvm]`, or `command: [scratch-utils, createvm]`. A bare
-// `command: [createvm]` overrides the entrypoint and fails to exec.
+// No gcloud or bash dependency, so it runs from a distroless image. The ENTRYPOINT
+// is this binary, so a pod passes the subcommand as an ARGUMENT -- `args:
+// [createvm]`; a bare `command: [createvm]` replaces the entrypoint and fails.
 package main
 
 import (
@@ -31,8 +29,7 @@ func main() {
 		os.Exit(2)
 	}
 	sub := os.Args[1]
-	// Re-slice so each subcommand sees its own args as os.Args[1:], leaving its flag
-	// parsing unchanged.
+	// Each subcommand then sees its own args as os.Args[1:].
 	os.Args = append([]string{os.Args[0] + " " + sub}, os.Args[2:]...)
 
 	switch sub {

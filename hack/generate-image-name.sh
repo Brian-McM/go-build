@@ -1,26 +1,15 @@
 #!/bin/bash
-# Generate a GCE image name matching the go-build release it corresponds to, so an
-# image and a calico/go-build tag are matchable by eye:
+# Name a GCE image after the go-build release it corresponds to, so the two are
+# matchable by eye. Tag builds use the git tag, everything else the branch --
+# matching calico-go-build-cd, and the tag is the only place the re-release suffix
+# (-1, -2) lives.
 #
-#   1.27.0-llvm21.1.8-k8s1.37.0   ->   ci-base-1-27-0-llvm21-1-8-k8s1-37-0
+#   tag 1.27.0-llvm21.1.8-k8s1.37.0-1  ->  ci-base-1-27-0-llvm21-1-8-k8s1-37-0-1
+#   branch go1.27                      ->  ci-base-go1-27
 #
-# The version half follows calico-go-build-cd (see promotions/calico-go-build.yml):
-# a tag build uses the git tag, anything else the branch. The tag matters because
-# it is the only place the re-release suffix lives -- a CVE fix leaving every
-# compiler version untouched reuses the tag with -1, -2 appended (see
-# create-tag-on-version-change.yml), which generate-version-tag-name.sh cannot know.
-#
-#   tag build      1.27.0-llvm21.1.8-k8s1.37.0-1  ->  ci-base-1-27-0-llvm21-1-8-k8s1-37-0-1
-#   branch build   go1.27                         ->  ci-base-go1-27
-#   branch build   master                         ->  ci-base-master
-#
-# GCE names are RFC1035: lowercase, digits, hyphens, leading letter, 63 max. Dots
-# and anything else illegal (a / in a branch name) become hyphens.
-#
-# -m caps the length below GCE's own 63. GKE allows a secondary boot disk image
-# name of at most 39 characters, and enforces it when a node pool ATTACHES the
-# image -- long after the image built cleanly. Pass the real cap so an over-long
-# name fails here instead.
+# Dots and other illegal characters become hyphens (GCE names are RFC1035, 63 max).
+# -m caps it lower: GKE allows 39 for a secondary boot disk and only enforces that
+# when a node pool attaches the image, long after it built.
 #
 #   generate-image-name.sh -p ci-base [-f versions.yaml] [-m 39]
 

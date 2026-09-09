@@ -1,9 +1,7 @@
 // Copyright (c) 2026 Tigera, Inc. All rights reserved.
 
-// Package util reimplements the cc-utils argoci common-scripts
-// (tigera/cc-utils/argoci-images/common-scripts) in Go, since a distroless image
-// has no bash/git/ssh to run them. LocalSecret is createLocalSecret. Slated to
-// move to a shared cc-util folder.
+// Package util reimplements the cc-utils argoci common-scripts in Go, since a
+// distroless image has no bash to run them. Slated to move to a shared folder.
 package util
 
 import (
@@ -42,10 +40,9 @@ func MustLocalSecret(name, destPath string) error {
 	return nil
 }
 
-// SetupComputeADC points Application Default Credentials at the compute SA key.
-// It prefers the file at COMPUTE_SA_KEY (a mounted secret volume), else
-// materializes the key named by COMPUTE_SA_ENV to a temp file. Either way it sets
-// GOOGLE_APPLICATION_CREDENTIALS, so no createLocalSecret step is needed.
+// SetupComputeADC points Application Default Credentials at the compute SA key:
+// the file at COMPUTE_SA_KEY if it exists, else the env var named by
+// COMPUTE_SA_ENV materialized to a temp file.
 func SetupComputeADC() error {
 	if p := os.Getenv("COMPUTE_SA_KEY"); p != "" {
 		if _, err := os.Stat(p); err == nil {

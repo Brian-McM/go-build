@@ -49,29 +49,19 @@ func New(ctx context.Context, project string) (*Client, error) {
 	return &Client{svc: svc, project: project}, nil
 }
 
-// PerZoneTimeout bounds ONE zone's attempt. The zone list exists so a degraded zone
-// can be skipped, which only works if each gets its own budget: with a single
-// deadline spanning the loop, one slow zone consumed all of it and every later zone
-// failed its insert instantly with "context deadline exceeded", reporting a zone
-// that was never really tried and hiding the actual failure.
-//
-// Three minutes because the failure mode is slowness, not rejection: us-central1-a
-// once accepted an insert and took 85 minutes to finish it, rather than returning
-// an out-of-capacity error we could react to.
+// PerZoneTimeout bounds ONE zone's attempt, so a degraded zone can be skipped. A
+// single deadline across the loop let one slow zone consume all of it and blamed
+// the later zones for a deadline they never had. Three minutes because the failure
+// mode is slowness -- us-central1-a once took 85 minutes to finish an insert.
 const PerZoneTimeout = 3 * time.Minute
 
-// Create inserts the instance in the first zone that accepts it, waits for the
-// insert to finish, and returns that zone. The VM gets an external IP,
-// cloud-platform scope, and a max-run-duration GCP reclaims it at.
+// Create inserts the instance in the first zone that accepts it and returns that
+// zone. The VM gets an external IP, cloud-platform scope, and a max-run-duration
+// GCP reclaims it at -- eventually: that reclaim is itself an operation, and one
+// observed DELETE sat PENDING behind the wedged insert it was meant to clean up.
 //
-// That reclaim is a backstop, not a guarantee. It fires on time, but it is itself
-// an operation: observed in us-central1-a, an insert stayed RUNNING for over 90
-// minutes and the deadline's own DELETE then sat PENDING behind it. A VM whose
-// insert is wedged can outlive its max-run-duration, so treat the backstop as
-// eventual, and the per-zone timeout below as the thing that keeps a job moving.
-//
-// Every zone's error is reported, not just the last: which zones were out of
-// capacity and which were never reached is exactly what you need from a CI log.
+// Every zone's error is reported, not just the last, since which zones were out of
+// capacity and which were never reached is what a CI log needs.
 func (c *Client) Create(ctx context.Context, cfg Config) (zone string, err error) {
 	if len(cfg.Zones) == 0 {
 		return "", fmt.Errorf("no zones configured")
@@ -102,17 +92,16 @@ func (c *Client) createInZone(ctx context.Context, zone string, cfg Config) erro
 		return fmt.Errorf("insert: %w", err)
 	}
 	if err := c.waitZoneOp(zctx, zone, op.Name); err != nil {
-		// The insert was accepted, so an instance may exist or be mid-create even
-		// though we are moving on. Left behind it would run to max-run-duration while
-		// we boot another elsewhere -- two VMs for one job.
+		// The insert was accepted, so an instance may exist. Left behind it would run
+		// to max-run-duration while we boot another elsewhere -- two VMs for one job.
 		c.deleteBestEffort(zone, cfg.Name)
 		return fmt.Errorf("wait for insert: %w", err)
 	}
 	return nil
 }
 
-// deleteBestEffort removes an instance we are abandoning. It builds its own
-// context: the caller's is typically already expired, which is why we are here.
+// deleteBestEffort builds its own context: the caller's is typically already
+// expired, which is why we are here.
 func (c *Client) deleteBestEffort(zone, name string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -178,9 +167,8 @@ func (c *Client) Delete(ctx context.Context, zone, name string) error {
 // FindZone returns the zone an instance of this name lives in, or "" if none.
 // Lets a zone-agnostic cleanup delete a VM without carrying its zone.
 func (c *Client) FindZone(ctx context.Context, name string) (string, error) {
-	// The filter value must be quoted: an unquoted name containing - or . is a
-	// syntax error, not a non-match. AggregatedList spans every zone, so it pages
-	// even when the filter matches one instance.
+	// The value must be quoted -- an unquoted name with a - or . is a syntax error,
+	// not a non-match -- and AggregatedList pages even for a single match.
 	call := c.svc.Instances.AggregatedList(c.project).Filter(fmt.Sprintf("name=%q", name))
 	for {
 		agg, err := call.Context(ctx).Do()
@@ -221,9 +209,8 @@ func (c *Client) waitZoneOp(ctx context.Context, zone, op string) error {
 }
 
 // sourceImage resolves the boot image: an exact name when Image is set, else the
-// family, which always yields its newest member. Pinning matters now that images
-// are named per go-build release -- a job can hold an image steady while newer
-// ones land in the family.
+// family, which always yields its newest member. The pin lets a job hold one image
+// steady while newer releases land in the family.
 func sourceImage(cfg Config) string {
 	if cfg.Image != "" {
 		return fmt.Sprintf("projects/%s/global/images/%s", cfg.ImageProject, cfg.Image)

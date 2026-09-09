@@ -2,30 +2,19 @@
 
 // Package runonvm runs a script on a GCE VM over SSH: the generic "runOn: vm"
 // primitive. It ships files and secrets, runs a script (a FILE, never a command
-// string, so nothing has to survive three levels of shell quoting), pulls
-// artifacts back on ANY exit, and exits with the script's own status.
+// string, so nothing must survive three levels of shell quoting), pulls artifacts
+// back on ANY exit, and exits with the script's own status.
 //
-// It is meant to be the `command` of an Argo `script` template. Argo writes the
-// template's `source:` to a temp file and appends its path as the last argument,
-// so that `source:` block just executes on the VM. (--script is the CLI
-// equivalent.)
+// Meant to be the `command` of an Argo `script` template: Argo writes `source:` to
+// a temp file and appends its path as the last argument, so that block just runs on
+// the VM. Everything job-specific is a flag, so this stays generic.
 //
-// The VM comes from env, as in createvm/deletevm. Everything job-specific --
-// which files, secrets and artifacts -- is a flag, so this stays generic.
-//
-// The image ENTRYPOINT is the scratch-utils binary, so the subcommand is an
-// ARGUMENT, not the command -- a bare `command: [runonvm]` overrides the entrypoint
-// and fails with "executable file not found in $PATH".
-//
-//	command: [scratch-utils, runonvm,
-//	          --put-env, ENV_VAR:remote/path,     # repeatable; env value -> 0600 file
-//	          --env,     ENV_VAR,                 # repeatable; forwarded into a sourced env file
-//	          --get,     remote/dir:local/dir]    # repeatable; best-effort, on exit
-//	source: |                                     # Argo appends this file; it runs on the VM
+//	command: [scratch-utils, runonvm,          # subcommand is an ARGUMENT: the
+//	          --put-env, ENV_VAR:remote/path,  # ENTRYPOINT is the binary, so a bare
+//	          --env,     ENV_VAR,              # command: [runonvm] fails to exec
+//	          --get,     remote/dir:local/dir]
+//	source: |
 //	  ...
-//
-// A plain container template can instead leave the entrypoint alone and pass
-// `args: [runonvm, ...]`.
 package runonvm
 
 import (

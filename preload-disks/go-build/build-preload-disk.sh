@@ -1,57 +1,37 @@
 #!/usr/bin/env bash
 # Copyright (c) 2026 Tigera, Inc. All rights reserved.
 #
-# Build a GKE secondary-boot-disk image with calico/go-build PRELOADED, so argoci
-# build pods start with it already on the node -- no multi-hundred-MB pull per run.
-# Wraps Google's gke-disk-image-builder (github.com/ai-on-gke/tools): a throwaway
-# builder VM pulls the images onto a data disk in the containerd image-streaming
-# layout and snapshots it. See README.md for attaching the result to a node pool.
+# Build a GKE secondary-boot-disk image with calico/go-build preloaded, so build
+# pods skip the pull. Wraps Google's gke-disk-image-builder. See README.md.
 #
-#   PROJECT=<cluster-project> ZONE=us-central1-a \
-#   GCS_PATH=gs://<log-bucket> ./build-preload-disk.sh
+#   PROJECT=tigera-cc-dev GCS_PATH=gs://<bucket> ./build-preload-disk.sh
 #
-# Needs: gcloud authed with compute instance/disk/image create+delete and write to
-# the log bucket in PROJECT; a local Go toolchain (runs `go run ./cli`); git; yq.
-# Takes ~5-8 min (most of it the builder VM pulling the images).
+# Needs gcloud, git, yq and a Go toolchain. ~5-8 min.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 command -v yq >/dev/null || { echo "yq is required to read the pinned versions" >&2; exit 1; }
 
-# Default to the project holding the GKE clusters that consume the disk. A node
-# pool CAN reference an image in another project (see README.md), but building it
-# here keeps the image and its consumer together and needs no cross-project IAM.
+# The clusters' own project: cross-project works but needs extra IAM (README.md).
 PROJECT="${PROJECT:-tigera-cc-dev}"
 ZONE="${ZONE:-us-central1-a}"
-# The node pool pins this exact name in --secondary-boot-disk. Named off the
-# go-build release tag, as the go-build images are, so the disk and the image it
-# preloads match by eye. A pool binds an image at create time, so refreshing one is
-# still a new image plus a pool update.
-# Prefix is terse because GKE caps a secondary boot disk image name at 39 chars,
-# well under GCE's 63: "gbp" leaves room for the full go-build tag even in its
-# longest real shape (...-k8s1-37-0-rc-1-1, 34 chars), so the disk and the image it
-# caches still match by eye. -m makes an over-long name fail here rather than when
-# a node pool tries to attach it.
+# A node pool pins this exact name. GKE caps it at 39 chars (GCE allows 63) and
+# only enforces that on attach, so -m fails here instead; hence the terse prefix.
 IMAGE_NAME="${IMAGE_NAME:-$("$REPO/hack/generate-image-name.sh" -p gbp -m 39)}"
 DISK_SIZE_GB="${DISK_SIZE_GB:-20}"
-# The builder VM's network. tigera-cc-dev's "default" is an auto-mode network with
-# a real us-central1 subnet, so the defaults work there. Override when building in
-# a project whose "default" is a LEGACY network with no subnets at all -- as
-# unique-caldron-775's is, where the builder fails validation with
-# subnetworkResourceDoesNotExist and needs NETWORK=SUBNET=semaphore-autotest.
+# Override where "default" is a legacy network with no subnets (unique-caldron-775
+# is one): the builder demands a subnetwork and fails validation without it.
 NETWORK="${NETWORK:-default}"
 SUBNET="${SUBNET:-default}"
 GCS_PATH="${GCS_PATH:?set GCS_PATH to a gs:// bucket/path for the builder logs}"
-# Space-separated. Each MUST carry a tag or digest: the cache hits only the exact
-# ref a pod requests, so a floating tag preloads nothing. Defaults to the go-build
-# image this repo publishes, so the preloaded tag cannot drift from it.
+# Space-separated, each with a tag or digest: the cache hits only the exact ref a
+# pod requests. Defaults to this repo's go-build image, so it cannot drift.
 if [ -z "${CONTAINER_IMAGES:-}" ]; then
   go_build_tag="$("$REPO/hack/generate-version-tag-name.sh" -f "$REPO/images/calico-go-build/versions.yaml")"
   CONTAINER_IMAGES="docker.io/calico/go-build:${go_build_tag}"
 fi
-# Pinned in versions.yaml so every run of a given toolchain commit uses the same
-# builder. Override to test an upstream change; a branch or tag also works.
+# Pinned in versions.yaml; a branch or tag also works, for testing upstream.
 AI_ON_GKE_REF="${AI_ON_GKE_REF:-$(yq -r '.ai-on-gke.ref' "$HERE/versions.yaml")}"
 
 log() { echo "[preload-disk] $*"; }
@@ -59,8 +39,7 @@ log() { echo "[preload-disk] $*"; }
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
 
-# Not `clone --branch`: that takes only branch and tag names, and cannot check out
-# a commit. init + fetch + checkout FETCH_HEAD accepts any of the three.
+# Not `clone --branch`: that cannot check out a bare commit. This accepts any ref.
 log "fetching gke-disk-image-builder (ai-on-gke/tools @ ${AI_ON_GKE_REF})"
 git init -q "$workdir/tools"
 git -C "$workdir/tools" remote add origin https://github.com/ai-on-gke/tools.git
@@ -81,10 +60,8 @@ args=(
 )
 for img in $CONTAINER_IMAGES; do args+=(--container-image="$img"); done
 
-# Same pre-flight and release/branch split as vm-image. A node pool pins this name
-# in --secondary-boot-disk but stores the resource PATH, not an image id, so a
-# same-name recreate leaves its config valid -- safe for the only thing that should
-# pin a branch image, a test pool. Release images are never replaced.
+# Release images are immutable; branch images are replaced. A pool stores the image
+# PATH, not an id, so a same-name recreate leaves its config valid.
 if gcloud compute images describe "$IMAGE_NAME" --project="$PROJECT" >/dev/null 2>&1; then
   if [ "${SEMAPHORE_GIT_REF_TYPE:-}" = "tag" ]; then
     log "image $IMAGE_NAME already exists in $PROJECT -- this release is already built."

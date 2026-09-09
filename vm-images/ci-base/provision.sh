@@ -1,22 +1,18 @@
 #!/usr/bin/env bash
 # Copyright (c) 2026 Tigera, Inc. All rights reserved.
 #
-# Provisioner for the ci-base VM image -- any CI job needing docker/go/kubectl on
-# a GCE VM, not just the kind rig. Runs once as a throwaway builder's
-# startup-script; its disk is then snapshotted into a reusable image (README.md).
-# Baking the toolchain moves per-run install time to build time.
-#
-# Publishes /var/run/provision-done when done, which build-image.sh polls.
+# Provisioner for the ci-base VM image -- any CI job needing docker/go/kubectl on a
+# GCE VM. Runs once as a throwaway builder's startup-script; its disk becomes the
+# image (README.md). Publishes /var/run/provision-done when finished.
 set -xeuo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
-# Injected as a preamble by build-image.sh. Required, not defaulted: silently
-# baking a stale Go is the drift this indirection exists to prevent.
+# Injected by build-image.sh. Required, not defaulted: silently baking a stale Go
+# is the drift this exists to prevent.
 GO_VERSION="${GO_VERSION:?set by build-image.sh from images/calico-go-build/versions.yaml}"
 GO_SHA256="${GO_SHA256:?set by build-image.sh from images/calico-go-build/versions.yaml}"
 GO_BUILD_IMAGE="${GO_BUILD_IMAGE:?set by build-image.sh from images/calico-go-build/versions.yaml}"
 KUBECTL_VERSION="${KUBECTL_VERSION:?set by build-image.sh from images/calico-go-build/versions.yaml}"
-# kind and gh are pinned in vm-images/ci-base/versions.yaml.
 KIND_VERSION="${KIND_VERSION:?set by build-image.sh from vm-images/ci-base/versions.yaml}"
 KIND_NODE_IMAGE="${KIND_NODE_IMAGE:?set by build-image.sh from vm-images/ci-base/versions.yaml}"
 GH_VERSION="${GH_VERSION:?set by build-image.sh from vm-images/ci-base/versions.yaml}"
@@ -39,7 +35,7 @@ retry "${APT[@]}" install --no-install-recommends docker-ce docker-ce-cli contai
 usermod -a -G docker ubuntu
 systemctl enable docker
 
-# --- go / kind / kubectl / gh (all pinned; see the preamble above) -----------
+# --- go / kind / kubectl / gh (all pinned) ----------------------------------
 curl -sSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz
 # Checksum from versions.yaml, as the go-build Dockerfile does.
 echo "${GO_SHA256}  /tmp/go.tgz" | sha256sum -c -
@@ -62,10 +58,8 @@ fs.inotify.max_user_instances=512
 fs.inotify.max_user_watches=524288
 EOF
 
-# --- pre-pull the heavy CI docker images so jobs skip the pull --------------
-# Into the image's docker cache: the kind node image (3 clusters), go-build (the
-# calico + operator builds), registry:2 (pull-through caches, local helm registry).
-# Both tags are injected by build-image.sh, so neither can drift.
+# --- pre-pull the heavy CI images so jobs skip the pull ---------------------
+# Tags are injected by build-image.sh, so they cannot drift.
 systemctl start docker
 PREPULL_IMAGES=(
   "$KIND_NODE_IMAGE"

@@ -17,16 +17,11 @@ import (
 // var so tests can shrink it.
 var retryBackoff = time.Second
 
-// retry runs fn, retrying on transient errors with an exponential backoff. GCE
-// control-plane calls (get/set-metadata, operation waits) occasionally drop the
-// HTTP/2 connection mid-request ("http2: client connection lost") or return a
-// 429/5xx; a couple of retries turns that flake into a non-event. Permanent
-// errors (a 4xx, a missing instance) return immediately.
-//
-// Every error is wrapped with what, including the permanent one -- the callers
-// pass their whole message there ("get instance vm-1"), so returning fn's error
-// bare would leave a 404 with nothing saying which call or which instance
-// produced it.
+// retry runs fn with exponential backoff on transient errors -- GCE control-plane
+// calls occasionally drop the HTTP/2 connection or return a 429/5xx. Permanent
+// errors return at once. Every error is wrapped with what, the permanent one
+// included: callers pass their whole message there ("get instance vm-1"), so a
+// bare return would leave a 404 with nothing identifying the call.
 func retry(ctx context.Context, what string, fn func() error) error {
 	const attempts = 4
 	backoff := retryBackoff
@@ -43,8 +38,7 @@ func retry(ctx context.Context, what string, fn func() error) error {
 		}
 		select {
 		case <-ctx.Done():
-			// Name the last failure too: a bare deadline says nothing about what
-			// we were failing at while the clock ran out.
+			// Name the last failure: a bare deadline says nothing about why.
 			return fmt.Errorf("%s: %w (last attempt: %v)", what, ctx.Err(), err)
 		case <-time.After(backoff):
 		}
