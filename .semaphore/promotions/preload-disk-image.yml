@@ -8,8 +8,8 @@ agent:
 execution_time_limit:
   minutes: 30
 
-# Manual-only (no auto_promote in semaphore.yml): trigger from the Semaphore UI to
-# (re)build the GKE secondary-boot-disk image preloading calico/go-build. The work
+# Auto-promoted from promotions/calico-go-build.yml on a release tag, so the cached
+# image tracks the go-build image just published; also promotable by hand. The work
 # runs on a throwaway builder VM via Google's gke-disk-image-builder (see
 # preload-disks/ci-cache/build-preload-disk.sh); this agent drives gcloud + `go run`.
 global_job_config:
