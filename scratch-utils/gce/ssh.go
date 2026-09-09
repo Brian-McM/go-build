@@ -75,9 +75,12 @@ func (c *Client) DialSSH(ctx context.Context, zone, name, user string) (*SSH, er
 // injectKeyAndGetIP sets the instance's ssh-keys metadata to authorize user with
 // the given key (preserving any other metadata) and returns its external IP.
 func (c *Client) injectKeyAndGetIP(ctx context.Context, zone, name, user, authorized string) (string, error) {
-	inst, err := c.svc.Instances.Get(c.project, zone, name).Context(ctx).Do()
-	if err != nil {
-		return "", fmt.Errorf("get instance %s: %w", name, err)
+	var inst *compute.Instance
+	if err := retry(ctx, "get instance "+name, func() (err error) {
+		inst, err = c.svc.Instances.Get(c.project, zone, name).Context(ctx).Do()
+		return err
+	}); err != nil {
+		return "", err
 	}
 
 	md := inst.Metadata
@@ -96,9 +99,12 @@ func (c *Client) injectKeyAndGetIP(ctx context.Context, zone, name, user, author
 	if !replaced {
 		md.Items = append(md.Items, &compute.MetadataItems{Key: "ssh-keys", Value: strPtr(sshKeys)})
 	}
-	op, err := c.svc.Instances.SetMetadata(c.project, zone, name, md).Context(ctx).Do()
-	if err != nil {
-		return "", fmt.Errorf("set ssh-keys metadata on %s: %w", name, err)
+	var op *compute.Operation
+	if err := retry(ctx, "set ssh-keys metadata on "+name, func() (err error) {
+		op, err = c.svc.Instances.SetMetadata(c.project, zone, name, md).Context(ctx).Do()
+		return err
+	}); err != nil {
+		return "", err
 	}
 	if err := c.waitZoneOp(ctx, zone, op.Name); err != nil {
 		return "", fmt.Errorf("set-metadata op on %s: %w", name, err)

@@ -204,8 +204,11 @@ func (c *Client) FindZone(ctx context.Context, name string) (string, error) {
 // waitZoneOp blocks until a zone operation reaches DONE, surfacing its error.
 func (c *Client) waitZoneOp(ctx context.Context, zone, op string) error {
 	for {
-		got, err := c.svc.ZoneOperations.Wait(c.project, zone, op).Context(ctx).Do()
-		if err != nil {
+		var got *compute.Operation
+		if err := retry(ctx, "wait op "+op, func() (err error) {
+			got, err = c.svc.ZoneOperations.Wait(c.project, zone, op).Context(ctx).Do()
+			return err
+		}); err != nil {
 			return err
 		}
 		if got.Status == "DONE" {
