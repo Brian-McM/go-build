@@ -180,6 +180,13 @@ func TestPickZone(t *testing.T) {
 			wantAny:     "us-central1-f",
 		},
 		{
+			// The compute API lists STOPPED as well as TERMINATED for a halted VM.
+			name:        "only a stopped one",
+			found:       []zoneInstance{{"us-central1-c", "STOPPED"}},
+			wantLiveErr: true,
+			wantAny:     "us-central1-c",
+		},
+		{
 			name: "two going away: nothing to run on, and ambiguous to reap",
 			found: []zoneInstance{
 				{"us-central1-a", "TERMINATED"},

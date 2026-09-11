@@ -224,7 +224,7 @@ type zoneInstance struct {
 // it is shutting down, already stopped, or on its way out.
 func goingAway(status string) bool {
 	switch status {
-	case "STOPPING", "SUSPENDING", "SUSPENDED", "TERMINATED":
+	case "STOPPING", "STOPPED", "SUSPENDING", "SUSPENDED", "TERMINATED":
 		return true
 	}
 	return false
