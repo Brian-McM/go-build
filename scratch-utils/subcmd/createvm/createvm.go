@@ -33,18 +33,18 @@ func run(ctx context.Context) error {
 	if name == "" {
 		return fmt.Errorf("VM_NAME must be set")
 	}
-	project := envOr("GCP_VM_PROJECT", "unique-caldron-775")
-	zoneOut := envOr("ZONE_OUT", "/tmp/vm-zone")
+	project := util.EnvOr("GCP_VM_PROJECT", "unique-caldron-775")
+	zoneOut := util.EnvOr("ZONE_OUT", "/tmp/vm-zone")
 	// Point ADC at the compute SA (mounted key file, or materialized from its env var).
 	if err := util.SetupComputeADC(); err != nil {
 		return err
 	}
 
-	maxRun, err := time.ParseDuration(envOr("GOOGLE_VM_MAX_RUN_DURATION", "90m"))
+	maxRun, err := parseMaxRun(util.EnvOr("GOOGLE_VM_MAX_RUN_DURATION", "90m"))
 	if err != nil {
-		return fmt.Errorf("GOOGLE_VM_MAX_RUN_DURATION: %w", err)
+		return err
 	}
-	diskGB, err := parseDiskGB(envOr("GOOGLE_VM_DISK_SIZE", "200GB"))
+	diskGB, err := parseDiskGB(util.EnvOr("GOOGLE_VM_DISK_SIZE", "200GB"))
 	if err != nil {
 		return err
 	}
@@ -54,22 +54,21 @@ func run(ctx context.Context) error {
 		return err
 	}
 
-	zones := strings.Fields(envOr("GOOGLE_VM_ZONES", "us-central1-a us-central1-b us-central1-c us-central1-f"))
+	zones := strings.Fields(util.EnvOr("GOOGLE_VM_ZONES", "us-central1-a us-central1-b us-central1-c us-central1-f"))
 	if len(zones) == 0 {
 		return fmt.Errorf("GOOGLE_VM_ZONES is empty")
 	}
 	// Bound the whole create so an operation that never reaches DONE fails the step
 	// instead of hanging it until the workflow's own timeout. Derived from the zone
-	// count so every zone gets its full budget: a fixed cap silently starved the
-	// later zones when an early one was slow.
+	// count so every zone gets its full per-zone budget.
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(len(zones))*gce.PerZoneTimeout+time.Minute)
 	defer cancel()
 
 	cfg := gce.Config{
 		Name:        name,
 		Zones:       zones,
-		MachineType: envOr("GOOGLE_VM_MACHINE_TYPE", "n2-standard-16"),
-		DiskType:    envOr("GOOGLE_VM_DISK_TYPE", "pd-ssd"),
+		MachineType: util.EnvOr("GOOGLE_VM_MACHINE_TYPE", "n2-standard-16"),
+		DiskType:    util.EnvOr("GOOGLE_VM_DISK_TYPE", "pd-ssd"),
 		DiskSizeGB:  diskGB,
 		// ci-base has the toolchain baked in (built by vm-images/ci-base/build-image.sh), so
 		// the VM boots ready and the job does no installs. Override for stock Ubuntu.
@@ -77,13 +76,13 @@ func run(ctx context.Context) error {
 		// ci-base-1-27-0-llvm21-1-8-k8s1-37-0) so the image can be rolled without
 		// rebuilding this binary; unset, the family gives whatever is newest.
 		Image:        os.Getenv("GOOGLE_VM_IMAGE"),
-		ImageFamily:  envOr("GOOGLE_VM_IMAGE_FAMILY", "ci-base"),
-		ImageProject: envOr("GOOGLE_VM_IMAGE_PROJECT", "unique-caldron-775"),
+		ImageFamily:  util.EnvOr("GOOGLE_VM_IMAGE_FAMILY", "ci-base"),
+		ImageProject: util.EnvOr("GOOGLE_VM_IMAGE_PROJECT", "unique-caldron-775"),
 		MaxRun:       maxRun,
 		Labels: map[string]string{
 			"ci-runner":   "true",
 			"ci-project":  "kindrig",
-			"ci-workflow": envOr("CI_WORKFLOW_LABEL", "unknown"),
+			"ci-workflow": util.EnvOr("CI_WORKFLOW_LABEL", "unknown"),
 		},
 	}
 
@@ -105,6 +104,21 @@ func run(ctx context.Context) error {
 	return nil
 }
 
+// parseMaxRun parses the VM's reclaim deadline. Non-positive is rejected rather
+// than passed on: instanceSpec omits the whole Scheduling block when MaxRun is not
+// positive, so "0s" would create a VM with no deadline at all -- and deletevm
+// returning 0 on any failure assumes that deadline is there to catch it.
+func parseMaxRun(s string) (time.Duration, error) {
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, fmt.Errorf("GOOGLE_VM_MAX_RUN_DURATION %q: %w", s, err)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("GOOGLE_VM_MAX_RUN_DURATION %q: must be positive", s)
+	}
+	return d, nil
+}
+
 // parseDiskGB accepts "200GB", "200G", or "200" and returns the GB count.
 func parseDiskGB(s string) (int64, error) {
 	// Errors quote s, not trimmed: report what the caller actually set.
@@ -118,11 +132,4 @@ func parseDiskGB(s string) (int64, error) {
 		return 0, fmt.Errorf("GOOGLE_VM_DISK_SIZE %q: must be positive", s)
 	}
 	return n, nil
-}
-
-func envOr(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
 }

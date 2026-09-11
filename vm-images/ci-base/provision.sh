@@ -69,8 +69,17 @@ systemctl start docker
 PREPULL_IMAGES=("$GO_BUILD_IMAGE" "registry:2")
 # Unquoted on purpose: KIND_NODE_IMAGES is a space-separated list.
 for img in $KIND_NODE_IMAGES; do PREPULL_IMAGES+=("$img"); done
+# Fatal, not a warning: `|| echo` neutralised set -e, so a registry blip or a bad
+# digest let the marker below be written and the image publish with an empty cache
+# -- which only ever shows up as jobs being slower.
 for img in "${PREPULL_IMAGES[@]}"; do
-  retry docker pull "$img" || echo "warn: could not pre-pull $img"
+  retry docker pull "$img"
+done
+
+# Assert the cache holds everything, so a pull that somehow succeeded without
+# landing the image cannot reach the snapshot.
+for img in "${PREPULL_IMAGES[@]}"; do
+  docker image inspect "$img" >/dev/null
 done
 
 # Readiness marker for the image-build poll.

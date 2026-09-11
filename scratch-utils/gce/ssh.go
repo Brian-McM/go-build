@@ -60,8 +60,9 @@ func (c *Client) DialSSH(ctx context.Context, zone, name, user string) (*SSH, er
 	deadline := time.Now().Add(3 * time.Minute)
 	var lastErr error
 	for time.Now().Before(deadline) {
-		client, err := ssh.Dial("tcp", addr, cfg)
+		client, err := dial(addr, cfg)
 		if err == nil {
+			go keepalive(client)
 			return &SSH{client: client}, nil
 		}
 		lastErr = err
@@ -72,6 +73,48 @@ func (c *Client) DialSSH(ctx context.Context, zone, name, user string) (*SSH, er
 		}
 	}
 	return nil, fmt.Errorf("ssh to %s (%s) not ready after 3m: %w", name, addr, lastErr)
+}
+
+// dial bounds the handshake as well as the connect. ssh.Dial would not: it passes
+// Timeout to net.DialTimeout and then runs NewClientConn with no deadline, so a VM
+// whose sshd has bound the socket but is not yet answering accepts the connection
+// and stalls forever -- which is the very state the retry loop above exists to ride
+// out, and it would never get back there to retry.
+func dial(addr string, cfg *ssh.ClientConfig) (*ssh.Client, error) {
+	conn, err := net.DialTimeout("tcp", addr, cfg.Timeout)
+	if err != nil {
+		return nil, err
+	}
+	if err := conn.SetDeadline(time.Now().Add(cfg.Timeout)); err != nil {
+		conn.Close()
+		return nil, err
+	}
+	c, chans, reqs, err := ssh.NewClientConn(conn, addr, cfg)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	// Clear it again: the deadline covered the handshake, and the session that
+	// follows carries a CI job of unbounded length.
+	if err := conn.SetDeadline(time.Time{}); err != nil {
+		c.Close()
+		return nil, err
+	}
+	return ssh.NewClient(c, chans, reqs), nil
+}
+
+// keepalive stops GCP from reaping the connection. x/crypto/ssh sends nothing on
+// its own, and a VPC drops an idle established flow after 10 minutes with no way
+// to tune it -- so a quiet stretch in the job (a long build, kind waiting on its
+// control plane) would kill the session and take the artifact pull with it.
+func keepalive(client *ssh.Client) {
+	t := time.NewTicker(60 * time.Second)
+	defer t.Stop()
+	for range t.C {
+		if _, _, err := client.SendRequest("keepalive@openssh.com", true, nil); err != nil {
+			return // connection is gone; Run/GetDir will report it
+		}
+	}
 }
 
 // injectKeyAndGetIP sets the instance's ssh-keys metadata to authorize user with
@@ -112,9 +155,21 @@ func (c *Client) injectKeyAndGetIP(ctx context.Context, zone, name, user, author
 		return "", fmt.Errorf("set-metadata op on %s: %w", name, err)
 	}
 
-	ip := externalIP(inst)
-	if ip == "" {
-		return "", fmt.Errorf("instance %s has no external IP", name)
+	// Re-read rather than reuse the snapshot from before the metadata op: createvm
+	// does not wait for readiness, so natIP can still be unset when the insert
+	// reaches DONE, and it appears seconds later. Retried for the same reason.
+	var ip string
+	if err := retry(ctx, "external IP of "+name, func() error {
+		fresh, err := c.svc.Instances.Get(c.project, zone, name).Context(ctx).Do()
+		if err != nil {
+			return err
+		}
+		if ip = externalIP(fresh); ip == "" {
+			return fmt.Errorf("external IP of %s: %w", name, errNotReady)
+		}
+		return nil
+	}); err != nil {
+		return "", err
 	}
 	return ip, nil
 }
@@ -240,7 +295,7 @@ func (s *SSH) PutDir(localDir, remoteDir string) error {
 
 // GetDir streams a remote directory's contents into localDir. Best-effort: a
 // missing remote path is not an error, since an epilogue runs precisely when the
-// files it wants may never have been produced.
+// files it wants may have never been produced.
 func (s *SSH) GetDir(remoteDir, localDir string) error {
 	sess, err := s.client.NewSession()
 	if err != nil {
@@ -258,6 +313,12 @@ func (s *SSH) GetDir(remoteDir, localDir string) error {
 		return err
 	}
 	if err := untar(stdout, localDir); err != nil {
+		// Drain before waiting. StdoutPipe requires the reader to keep reading; the
+		// remote tar is still writing, so abandoning the pipe fills the window, blocks
+		// it forever and hangs Wait. This path runs from runonvm's deferred --get,
+		// after the job reported its exit code, so a hang here looks like a job wedged
+		// at 100%.
+		_, _ = io.Copy(io.Discard, stdout)
 		_ = sess.Wait()
 		return err
 	}

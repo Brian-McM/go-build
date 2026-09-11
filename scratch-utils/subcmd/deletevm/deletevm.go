@@ -28,10 +28,8 @@ func Run() int {
 		fmt.Fprintln(os.Stderr, "deletevm: VM_NAME must be set")
 		return 1
 	}
-	project := envOr("GCP_VM_PROJECT", "unique-caldron-775")
-	// The cleanup step injects the SA as an env var, not a mounted file: pointing
-	// ADC at a nonexistent /secrets path made every delete fail auth, leaking VMs to
-	// the max-run-duration backstop.
+	project := util.EnvOr("GCP_VM_PROJECT", "unique-caldron-775")
+	// The cleanup step injects the SA as an env var, not a mounted file.
 	if err := util.SetupComputeADC(); err != nil {
 		fmt.Fprintf(os.Stderr, "deletevm: %v (leaving to max-run-duration)\n", err)
 		return 0
@@ -62,11 +60,4 @@ func Run() int {
 	}
 	fmt.Printf("[deletevm] deleted %s\n", name)
 	return 0
-}
-
-func envOr(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
 }

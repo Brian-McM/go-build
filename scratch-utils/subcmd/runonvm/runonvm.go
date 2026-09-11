@@ -51,7 +51,7 @@ func Run() int {
 func run(ctx context.Context) int {
 	var puts, putEnvs, envs, gets stringList
 	scriptFlag := flag.String("script", "", "script to run on the VM (Argo appends the source file as a trailing arg; --script is the CLI equivalent)")
-	user := flag.String("user", envOr("VM_SSH_USER", "ubuntu"), "SSH user")
+	user := flag.String("user", util.EnvOr("VM_SSH_USER", "ubuntu"), "SSH user")
 	flag.Var(&puts, "put", "LOCAL:REMOTE file or dir to upload before running (repeatable)")
 	flag.Var(&putEnvs, "put-env", "ENVVAR:REMOTE -- write an env var's value to a 0600 remote file (repeatable)")
 	flag.Var(&envs, "env", "ENVVAR to forward into an env file the script sources before running (repeatable)")
@@ -73,7 +73,7 @@ func run(ctx context.Context) int {
 		fmt.Fprintln(os.Stderr, "runonvm: VM_NAME must be set")
 		return 2
 	}
-	project := envOr("GCP_VM_PROJECT", "unique-caldron-775")
+	project := util.EnvOr("GCP_VM_PROJECT", "unique-caldron-775")
 
 	if err := util.SetupComputeADC(); err != nil {
 		fmt.Fprintf(os.Stderr, "runonvm: %v\n", err)
@@ -199,9 +199,13 @@ func run(ctx context.Context) int {
 		fmt.Fprintf(os.Stderr, "runonvm: upload script: %v\n", err)
 		return 1
 	}
-	runCmd := "bash " + remoteScript
+	// Quoted like every other remote path: remoteScript is path.Base of a
+	// caller-supplied --script, so a space would split the command and report
+	// "No such file or directory" after the upload already succeeded.
+	qScript := util.ShellQuote(remoteScript)
+	runCmd := "bash " + qScript
 	if haveEnv {
-		runCmd = fmt.Sprintf(". %s && bash %s", remoteEnv, remoteScript)
+		runCmd = fmt.Sprintf(". %s && bash %s", util.ShellQuote(remoteEnv), qScript)
 	}
 	fmt.Printf("[runonvm] running %s on %s\n", remoteScript, name)
 	code, err := conn.Run(runCmd, os.Stdout, os.Stderr)
@@ -220,11 +224,4 @@ func splitPair(s string) (a, b string, ok bool) {
 		return "", "", false
 	}
 	return s[:i], s[i+1:], true
-}
-
-func envOr(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
 }

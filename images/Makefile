@@ -11,9 +11,16 @@ CALICO_SCRATCH_UTILS ?= scratch-utils
 .PHONY: build
 build:
 	$(MAKE) -C ../cmd build
-	mkdir -p calico-binfmt/bin calico-go-build/bin/ calico-scratch-utils/bin/
+	mkdir -p calico-binfmt/bin calico-go-build/bin/
 	cp ../cmd/bin/binfmt-$(ARCH) calico-binfmt/bin/binfmt-$(ARCH)
 	cp ../cmd/bin/semvalidator-$(ARCH) calico-go-build/bin/semvalidator-$(ARCH)
+
+# Separate so the go-build and binfmt images do not compile the GCP SDK to build
+# a binary they never contain.
+.PHONY: scratch-utils-build
+scratch-utils-build:
+	$(MAKE) -C ../cmd scratch-utils-build
+	mkdir -p calico-scratch-utils/bin/
 	cp ../cmd/bin/scratch-utils-$(ARCH) calico-scratch-utils/bin/scratch-utils-$(ARCH)
 
 .PHONY: image
@@ -113,7 +120,7 @@ CALICO_SCRATCH_UTILS_IMAGETAG ?= $(shell yq -r '.scratch-utils.version' calico-s
 
 # amd64 only, like binfmt: the runners and the GCE VMs are x86_64.
 .PHONY: calico-scratch-utils-image
-calico-scratch-utils-image: build
+calico-scratch-utils-image: scratch-utils-build
 	$(DOCKER_BUILD) -t $(CALICO_SCRATCH_UTILS):$(CALICO_SCRATCH_UTILS_IMAGETAG)-amd64 -f calico-scratch-utils/Dockerfile calico-scratch-utils/
 	$(MAKE) BUILD_IMAGES=$(CALICO_SCRATCH_UTILS) retag-build-images-with-registries VALIDARCHES=amd64 LATEST_IMAGE_TAG=$(CALICO_SCRATCH_UTILS_IMAGETAG) IMAGETAG=$(CALICO_SCRATCH_UTILS_IMAGETAG)
 

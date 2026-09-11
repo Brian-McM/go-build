@@ -149,3 +149,17 @@ func TestRetryWrapsEveryErrorWithWhat(t *testing.T) {
 		}
 	})
 }
+
+// errNotReady exists so a field GCE populates asynchronously (an external IP on a
+// freshly created VM) is retried rather than reported as a terminal failure.
+func TestErrNotReadyIsTransient(t *testing.T) {
+	if !isTransient(errNotReady) {
+		t.Error("bare errNotReady must be transient")
+	}
+	if !isTransient(fmt.Errorf("external IP of vm-1: %w", errNotReady)) {
+		t.Error("wrapped errNotReady must be transient")
+	}
+	if isTransient(errors.New("not ready yet")) {
+		t.Error("an unrelated error with the same text must not be transient")
+	}
+}

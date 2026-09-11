@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -51,10 +52,10 @@ func New(ctx context.Context, project string) (*Client, error) {
 	return &Client{svc: svc, project: project}, nil
 }
 
-// PerZoneTimeout bounds ONE zone's attempt, so a degraded zone can be skipped. A
-// single deadline across the loop let one slow zone consume all of it and blamed
-// the later zones for a deadline they never had. Three minutes because the failure
-// mode is slowness -- us-central1-a once took 85 minutes to finish an insert.
+// PerZoneTimeout bounds ONE zone's attempt, so a degraded zone can be skipped
+// rather than consuming the whole budget. Three minutes because the failure mode
+// is slowness, not rejection: a zone can accept an insert and take tens of minutes
+// to finish it.
 const PerZoneTimeout = 3 * time.Minute
 
 // Create inserts the instance in the first zone that accepts it and returns that
@@ -172,23 +173,84 @@ func (c *Client) FindZone(ctx context.Context, name string) (string, error) {
 	// The value must be quoted -- an unquoted name with a - or . is a syntax error,
 	// not a non-match -- and AggregatedList pages even for a single match.
 	call := c.svc.Instances.AggregatedList(c.project).Filter(fmt.Sprintf("name=%q", name))
+	var found []zoneInstance
 	for {
 		agg, err := call.Context(ctx).Do()
 		if err != nil {
 			return "", err
 		}
 		for scope, list := range agg.Items {
-			if len(list.Instances) == 0 {
-				continue
-			}
 			// scope is "zones/<zone>".
-			return strings.TrimPrefix(scope, "zones/"), nil
+			z := strings.TrimPrefix(scope, "zones/")
+			for _, inst := range list.Instances {
+				found = append(found, zoneInstance{zone: z, status: inst.Status})
+			}
 		}
 		if agg.NextPageToken == "" {
-			return "", nil
+			break
 		}
 		call = call.PageToken(agg.NextPageToken)
 	}
+	return pickZone(name, found)
+}
+
+// zoneInstance is one instance of a given name, and where and how it is.
+type zoneInstance struct {
+	zone   string
+	status string
+}
+
+// goingAway reports a status from which the instance will not become usable --
+// it is shutting down, already stopped, or on its way out.
+func goingAway(status string) bool {
+	switch status {
+	case "STOPPING", "SUSPENDING", "SUSPENDED", "TERMINATED":
+		return true
+	}
+	return false
+}
+
+// pickZone chooses which instance of this name to act on.
+//
+// Names are only zone-unique, and Create can leave a second behind: a zone whose
+// insert outlived PerZoneTimeout keeps its VM -- with a delete that may itself be
+// queued behind the wedged insert -- while the next zone succeeds. Picking by map
+// order would let deletevm reap one and leak the other, or runonvm run the job on
+// the VM createvm never reported.
+//
+// So prefer the live one, which resolves that case without guessing. Fall back to
+// a lone going-away instance rather than reporting nothing, since deletevm still
+// wants to reap a TERMINATED VM that is holding its disk. Genuine ambiguity --
+// two live instances -- is refused rather than resolved by coin flip.
+func pickZone(name string, found []zoneInstance) (string, error) {
+	var live, dying []zoneInstance
+	for _, zi := range found {
+		if goingAway(zi.status) {
+			dying = append(dying, zi)
+		} else {
+			live = append(live, zi)
+		}
+	}
+	for _, set := range [][]zoneInstance{live, dying} {
+		switch len(set) {
+		case 0:
+			continue
+		case 1:
+			return set[0].zone, nil
+		default:
+			return "", fmt.Errorf("%s exists in more than one zone (%s); set ZONE to pick one", name, describe(set))
+		}
+	}
+	return "", nil
+}
+
+func describe(set []zoneInstance) string {
+	out := make([]string, 0, len(set))
+	for _, zi := range set {
+		out = append(out, zi.zone+"="+zi.status)
+	}
+	sort.Strings(out)
+	return strings.Join(out, ", ")
 }
 
 // waitZoneOp blocks until a zone operation reaches DONE, surfacing its error.

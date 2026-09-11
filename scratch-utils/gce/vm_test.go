@@ -121,3 +121,86 @@ func TestIsNotFound(t *testing.T) {
 		}
 	}
 }
+
+// The case this exists for: an insert that outlived PerZoneTimeout leaves a VM in
+// one zone -- possibly with a delete queued behind the wedged insert -- while
+// Create succeeds in the next. Names are only zone-unique, so both exist.
+func TestPickZone(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		found   []zoneInstance
+		want    string
+		wantErr bool
+	}{
+		{name: "nothing found"},
+		{
+			name:  "one running",
+			found: []zoneInstance{{"us-central1-b", "RUNNING"}},
+			want:  "us-central1-b",
+		},
+		{
+			// Without the live/dying split this refused, breaking the job even though
+			// only one VM could actually be used.
+			name: "abandoned one going away, real one live",
+			found: []zoneInstance{
+				{"us-central1-a", "STOPPING"},
+				{"us-central1-b", "RUNNING"},
+			},
+			want: "us-central1-b",
+		},
+		{
+			// A wedged insert can still report STAGING, so treat it as live and refuse.
+			name: "two live is genuine ambiguity",
+			found: []zoneInstance{
+				{"us-central1-a", "STAGING"},
+				{"us-central1-b", "RUNNING"},
+			},
+			wantErr: true,
+		},
+		{
+			// deletevm still wants this: stopped, but holding its disk.
+			name:  "only a terminated one",
+			found: []zoneInstance{{"us-central1-a", "TERMINATED"}},
+			want:  "us-central1-a",
+		},
+		{
+			name: "two going away is still ambiguous",
+			found: []zoneInstance{
+				{"us-central1-a", "TERMINATED"},
+				{"us-central1-f", "STOPPING"},
+			},
+			wantErr: true,
+		},
+	} {
+		got, err := pickZone("vm-1", tc.found)
+		if tc.wantErr {
+			if err == nil {
+				t.Errorf("%s: want an error, got zone %q", tc.name, got)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%s: unexpected error %v", tc.name, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// The refusal has to say which zones and what state, or the operator cannot act.
+func TestPickZoneErrorNamesZonesAndStatuses(t *testing.T) {
+	_, err := pickZone("vm-1", []zoneInstance{
+		{"us-central1-b", "RUNNING"},
+		{"us-central1-a", "STAGING"},
+	})
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	for _, want := range []string{"vm-1", "us-central1-a=STAGING", "us-central1-b=RUNNING", "set ZONE"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q: %v", want, err)
+		}
+	}
+}

@@ -68,8 +68,8 @@ func TestMustLocalSecretErrorsWhenUnset(t *testing.T) {
 	}
 }
 
-// The key used to go to a fixed /tmp path, which os.WriteFile would follow a
-// symlink to. CreateTemp opens O_EXCL with a random name at 0600.
+// The key must land on a private, per-run path: O_EXCL at 0600 with a random
+// name, so it cannot follow a symlink or collide with a concurrent run.
 func TestSetupComputeADCUsesAPrivateUniqueFile(t *testing.T) {
 	t.Setenv("COMPUTE_SA_KEY", "")
 	t.Setenv("COMPUTE_SA_ENV", "TEST_SA_JSON")

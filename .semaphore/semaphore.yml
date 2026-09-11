@@ -29,15 +29,15 @@ promotions:
   - name: Publish calico/base images
     pipeline_file: promotions/calico-base.yml
     auto_promote:
-      when: "branch = 'master' OR tag =~ '^1\\.\\d+\\.\\d+-llvm\\d+\\.\\d\\.\\d-k8s1\\.\\d+\\.\\d+'"
+      when: "branch = 'master' OR tag =~ '^1\\.\\d+\\.\\d+-llvm\\d+(\\.\\d+){2}-k8s1\\.\\d+\\.\\d+'"
   - name: Publish calico/binfmt images
     pipeline_file: promotions/calico-binfmt.yml
     auto_promote:
-      when: "branch = 'master' OR tag =~ '^1\\.\\d+\\.\\d+-llvm\\d+\\.\\d\\.\\d-k8s1\\.\\d+\\.\\d+'"
+      when: "branch = 'master' OR tag =~ '^1\\.\\d+\\.\\d+-llvm\\d+(\\.\\d+){2}-k8s1\\.\\d+\\.\\d+'"
   - name: Publish calico/go-build images
     pipeline_file: promotions/calico-go-build.yml
     auto_promote:
-      when: "branch = 'master' OR tag =~ '^1\\.\\d+\\.\\d+-llvm\\d+\\.\\d\\.\\d-k8s1\\.\\d+\\.\\d+'"
+      when: "branch = 'master' OR tag =~ '^1\\.\\d+\\.\\d+-llvm\\d+(\\.\\d+){2}-k8s1\\.\\d+\\.\\d+'"
   # Publish rust-build images for master and files under images/calico-rust-build have changed.
   - name: Publish calico/rust-build images
     pipeline_file: promotions/calico-rust-build.yml

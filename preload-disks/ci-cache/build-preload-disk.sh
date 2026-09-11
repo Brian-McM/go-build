@@ -49,7 +49,7 @@ AI_ON_GKE_REF="${AI_ON_GKE_REF:-$(yq -r '.ai-on-gke.ref' "$HERE/versions.yaml")}
 log() { echo "[preload-disk] $*"; }
 
 workdir="$(mktemp -d)"
-trap 'rm -rf "$workdir"' EXIT
+trap 'rm -rf "$workdir"' EXIT INT TERM
 
 # Not `clone --branch`: that cannot check out a bare commit. This accepts any ref.
 log "fetching gke-disk-image-builder (ai-on-gke/tools @ ${AI_ON_GKE_REF})"

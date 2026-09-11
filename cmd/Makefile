@@ -6,8 +6,15 @@ BINFMT_VERSION = $(shell yq -r '.tonistiigi-binfmt.version' ../images/calico-bin
 # qemu-user-static package version from Fedora
 QEMU_VERSION = $(shell yq -r '.qemu.version' ../images/calico-binfmt/versions.yaml)
 
+# scratch-utils is deliberately NOT here: `build` is a prerequisite of
+# calico-go-build-image and calico-binfmt-image, and those images contain neither
+# the binary nor its ~20 GCP/gRPC/OTel modules. calico-scratch-utils-image asks
+# for scratch-utils-build instead.
 .PHONY: build
-build: bin/binfmt-$(ARCH) bin/semvalidator-$(ARCH) bin/scratch-utils-$(ARCH)
+build: bin/binfmt-$(ARCH) bin/semvalidator-$(ARCH)
+
+.PHONY: scratch-utils-build
+scratch-utils-build: bin/scratch-utils-$(ARCH)
 
 bin/binfmt-$(ARCH): binfmt/main.go
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) \
@@ -19,7 +26,8 @@ bin/semvalidator-$(ARCH): semvalidator/main.go
 
 # Unlike the single-file binaries above, this one spans ../scratch-utils/, so list
 # every .go file it compiles -- otherwise an incremental build ships a stale binary.
-SCRATCH_UTILS_SRCS = $(shell find scratch-utils ../scratch-utils -name '*.go')
+# := so the find runs once, not on every expansion of the prerequisite list.
+SCRATCH_UTILS_SRCS := $(shell find scratch-utils ../scratch-utils -name '*.go')
 
 bin/scratch-utils-$(ARCH): $(SCRATCH_UTILS_SRCS)
 	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) \

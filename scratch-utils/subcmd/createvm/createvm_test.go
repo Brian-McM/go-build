@@ -2,7 +2,10 @@
 
 package createvm
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseDiskGB(t *testing.T) {
 	for _, tc := range []struct {
@@ -43,16 +46,27 @@ func TestParseDiskGBErrorQuotesOriginalInput(t *testing.T) {
 	if err == nil {
 		t.Fatal("want an error")
 	}
-	if want := `" 200GBx "`; !containsStr(err.Error(), want) {
+	if want := `" 200GBx "`; !strings.Contains(err.Error(), want) {
 		t.Errorf("error %q does not contain the original input %s", err, want)
 	}
 }
 
-func containsStr(s, sub string) bool {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
+// A non-positive duration parses fine but makes instanceSpec omit Scheduling
+// entirely, leaving the VM with no reclaim deadline -- the backstop deletevm
+// assumes when it returns 0 on a failed cleanup.
+func TestParseMaxRun(t *testing.T) {
+	for _, in := range []string{"90m", "1h", "30s", "1h30m"} {
+		d, err := parseMaxRun(in)
+		if err != nil || d <= 0 {
+			t.Errorf("parseMaxRun(%q) = %v, %v", in, d, err)
 		}
 	}
-	return false
+	for _, in := range []string{"0", "0s", "-5m", "-1h", "", "ninety minutes", "90"} {
+		if d, err := parseMaxRun(in); err == nil {
+			t.Errorf("parseMaxRun(%q) accepted it, returning %v", in, d)
+		}
+	}
+	if _, err := parseMaxRun("-5m"); err == nil || !strings.Contains(err.Error(), `"-5m"`) {
+		t.Errorf("error should quote the input: %v", err)
+	}
 }

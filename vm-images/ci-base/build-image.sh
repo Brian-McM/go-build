@@ -78,13 +78,18 @@ cleanup() {
   rm -f "$STARTUP"
   gcloud --quiet compute instances delete "$BUILDER" --project="$PROJECT" --zone="$ZONE" 2>/dev/null || true
 }
-trap cleanup EXIT
+trap cleanup EXIT INT TERM
 
 log "creating builder $BUILDER in $ZONE"
+# max-run-duration so the builder cannot outlive the job. The trap covers a clean
+# exit and a signal, but not a SIGKILL or an agent torn out from under us -- and
+# the provision poll below can run past ci-base-vm-image.yml's 30-minute limit,
+# which is exactly when Semaphore stops being polite.
 gcloud compute instances create "$BUILDER" --project="$PROJECT" --zone="$ZONE" \
   --machine-type=e2-standard-8 \
   --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud \
   --boot-disk-size=50GB --boot-disk-type=pd-ssd \
+  --max-run-duration=60m --instance-termination-action=DELETE \
   --metadata-from-file startup-script="$STARTUP"
 
 log "waiting for provision.sh (~2-3 min)"
@@ -102,9 +107,8 @@ if [ -z "$ready" ]; then
   exit 1
 fi
 
-# Enforcing, not informational: every binary must run and the go-build image must
-# be in the cache. This used to end in `|| true` and pipe through `head`, so a
-# broken download or a failed pre-pull still published an image.
+# Enforcing, not informational: every binary must run and every pre-pulled image
+# must be in the cache, or nothing is published from this builder.
 log "verifying the toolchain before snapshotting"
 if ! gcloud --quiet compute ssh "ubuntu@$BUILDER" --project="$PROJECT" --zone="$ZONE" \
   --command="set -e
@@ -115,7 +119,9 @@ if ! gcloud --quiet compute ssh "ubuntu@$BUILDER" --project="$PROJECT" --zone="$
     gh --version
     echo '--- baked images ---'
     sudo docker images --format '{{.Repository}}:{{.Tag}} ({{.Size}})'
-    sudo docker image inspect $(printf %q "$GO_BUILD_IMAGE") >/dev/null"; then
+    for img in $GO_BUILD_IMAGE $KIND_NODE_IMAGES registry:2; do
+      sudo docker image inspect \"\$img\" >/dev/null || { echo \"missing from cache: \$img\"; exit 1; }
+    done"; then
   log "verification FAILED -- not publishing an image from this builder"
   exit 1
 fi
@@ -123,10 +129,11 @@ fi
 log "stopping builder for a consistent disk"
 gcloud --quiet compute instances stop "$BUILDER" --project="$PROJECT" --zone="$ZONE"
 
-# The name has dots rewritten for RFC1035; the label keeps the exact tag.
+# Dots become dashes, matching the munged form in the image name -- label values
+# may not contain dots, so this cannot hold the tag verbatim.
 log "creating image $IMAGE in family $FAMILY"
 gcloud compute images create "$IMAGE" --project="$PROJECT" \
   --source-disk="$BUILDER" --source-disk-zone="$ZONE" --family="$FAMILY" \
-  --labels="go-build-tag=$(echo "$GO_BUILD_IMAGE" | sed 's|.*:||; s|\.|_|g')"
+  --labels="go-build-tag=$(echo "$GO_BUILD_IMAGE" | sed 's|.*:||; s|\.|-|g')"
 
 log "done: image $IMAGE (family $FAMILY, project $PROJECT). createvm: GOOGLE_VM_IMAGE_PROJECT=$PROJECT GOOGLE_VM_IMAGE_FAMILY=$FAMILY"

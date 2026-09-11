@@ -47,12 +47,19 @@ func retry(ctx context.Context, what string, fn func() error) error {
 	return fmt.Errorf("%s: giving up after %d attempts: %w", what, attempts, err)
 }
 
+// errNotReady marks a condition that simply has not happened yet -- a field GCE
+// populates asynchronously. Retrying is the whole point, so it counts as transient.
+var errNotReady = errors.New("not ready yet")
+
 // isTransient reports whether err is worth retrying: a rate-limit/server error
 // from the API, a network timeout, or one of the transport-level drops that
 // surface as a plain error string (the HTTP/2 connection-lost flake among them).
 func isTransient(err error) bool {
 	if err == nil {
 		return false
+	}
+	if errors.Is(err, errNotReady) {
+		return true
 	}
 	var gerr *googleapi.Error
 	if errors.As(err, &gerr) {
