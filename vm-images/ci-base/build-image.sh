@@ -81,10 +81,8 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 log "creating builder $BUILDER in $ZONE"
-# max-run-duration so the builder cannot outlive the job. The trap covers a clean
-# exit and a signal, but not a SIGKILL or an agent torn out from under us -- and
-# the provision poll below can run past ci-base-vm-image.yml's 30-minute limit,
-# which is exactly when Semaphore stops being polite.
+# max-run-duration so the builder cannot outlive the job: the trap misses a
+# SIGKILL, and the poll below can run past the pipeline's 30-minute limit.
 gcloud compute instances create "$BUILDER" --project="$PROJECT" --zone="$ZONE" \
   --machine-type=e2-standard-8 \
   --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud \

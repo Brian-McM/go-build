@@ -31,11 +31,6 @@ global_job_config:
 # Both images cache or bake calico/go-build, so they are rebuilt once it is
 # published -- chained here rather than off the root pipeline so they cannot start
 # before the image they consume exists.
-#
-# Gated on the release tag, not merely on this pipeline passing: it also runs for
-# master, where a rebuild would spend a builder VM per merge and, with no tag set,
-# would only produce the throwaway ci-base-master / cic-master branch images.
-# Both stay promotable by hand from the Semaphore UI for a one-off rebuild.
 promotions:
   - name: Build ci-base VM image
     pipeline_file: ci-base-vm-image.yml

@@ -125,82 +125,114 @@ func TestIsNotFound(t *testing.T) {
 // The case this exists for: an insert that outlived PerZoneTimeout leaves a VM in
 // one zone -- possibly with a delete queued behind the wedged insert -- while
 // Create succeeds in the next. Names are only zone-unique, so both exist.
+//
+// requireLive is the caller's intent: a run step must not be handed a VM that is
+// shutting down, while cleanup is happy to reap one.
 func TestPickZone(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
-		found   []zoneInstance
-		want    string
-		wantErr bool
+		name        string
+		found       []zoneInstance
+		wantLive    string // requireLive=true; "" with wantLiveErr=false means not found
+		wantLiveErr bool
+		wantAny     string // requireLive=false
+		wantAnyErr  bool
 	}{
-		{name: "nothing found"},
 		{
-			name:  "one running",
-			found: []zoneInstance{{"us-central1-b", "RUNNING"}},
-			want:  "us-central1-b",
+			name: "nothing found",
 		},
 		{
-			// Without the live/dying split this refused, breaking the job even though
-			// only one VM could actually be used.
+			name:     "one running",
+			found:    []zoneInstance{{"us-central1-b", "RUNNING"}},
+			wantLive: "us-central1-b",
+			wantAny:  "us-central1-b",
+		},
+		{
 			name: "abandoned one going away, real one live",
 			found: []zoneInstance{
 				{"us-central1-a", "STOPPING"},
 				{"us-central1-b", "RUNNING"},
 			},
-			want: "us-central1-b",
+			wantLive: "us-central1-b",
+			wantAny:  "us-central1-b",
 		},
 		{
-			// A wedged insert can still report STAGING, so treat it as live and refuse.
-			name: "two live is genuine ambiguity",
+			// A wedged insert can still report STAGING, so both count as live.
+			name: "two live is genuine ambiguity either way",
 			found: []zoneInstance{
 				{"us-central1-a", "STAGING"},
 				{"us-central1-b", "RUNNING"},
 			},
-			wantErr: true,
+			wantLiveErr: true,
+			wantAnyErr:  true,
 		},
 		{
-			// deletevm still wants this: stopped, but holding its disk.
-			name:  "only a terminated one",
-			found: []zoneInstance{{"us-central1-a", "TERMINATED"}},
-			want:  "us-central1-a",
+			// The correction: a dying VM is never a place to run a job. Cleanup still
+			// wants it -- stopped, but holding its disk.
+			name:        "only a terminated one",
+			found:       []zoneInstance{{"us-central1-a", "TERMINATED"}},
+			wantLiveErr: true,
+			wantAny:     "us-central1-a",
 		},
 		{
-			name: "two going away is still ambiguous",
+			name:        "only a stopping one",
+			found:       []zoneInstance{{"us-central1-f", "STOPPING"}},
+			wantLiveErr: true,
+			wantAny:     "us-central1-f",
+		},
+		{
+			name: "two going away: nothing to run on, and ambiguous to reap",
 			found: []zoneInstance{
 				{"us-central1-a", "TERMINATED"},
 				{"us-central1-f", "STOPPING"},
 			},
-			wantErr: true,
+			wantLiveErr: true,
+			wantAnyErr:  true,
 		},
 	} {
-		got, err := pickZone("vm-1", tc.found)
-		if tc.wantErr {
-			if err == nil {
-				t.Errorf("%s: want an error, got zone %q", tc.name, got)
+		for _, mode := range []struct {
+			requireLive bool
+			want        string
+			wantErr     bool
+			label       string
+		}{
+			{true, tc.wantLive, tc.wantLiveErr, "requireLive"},
+			{false, tc.wantAny, tc.wantAnyErr, "any"},
+		} {
+			got, err := pickZone("vm-1", tc.found, mode.requireLive)
+			switch {
+			case mode.wantErr && err == nil:
+				t.Errorf("%s [%s]: want an error, got zone %q", tc.name, mode.label, got)
+			case !mode.wantErr && err != nil:
+				t.Errorf("%s [%s]: unexpected error %v", tc.name, mode.label, err)
+			case !mode.wantErr && got != mode.want:
+				t.Errorf("%s [%s]: got %q, want %q", tc.name, mode.label, got, mode.want)
 			}
-			continue
-		}
-		if err != nil {
-			t.Errorf("%s: unexpected error %v", tc.name, err)
-			continue
-		}
-		if got != tc.want {
-			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
 		}
 	}
 }
 
-// The refusal has to say which zones and what state, or the operator cannot act.
-func TestPickZoneErrorNamesZonesAndStatuses(t *testing.T) {
+// A refusal has to say which zones and what state, or the operator cannot act.
+func TestPickZoneErrorsAreActionable(t *testing.T) {
 	_, err := pickZone("vm-1", []zoneInstance{
 		{"us-central1-b", "RUNNING"},
 		{"us-central1-a", "STAGING"},
-	})
+	}, true)
 	if err == nil {
-		t.Fatal("want an error")
+		t.Fatal("want an error for two live instances")
 	}
 	for _, want := range []string{"vm-1", "us-central1-a=STAGING", "us-central1-b=RUNNING", "set ZONE"} {
 		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error should mention %q: %v", want, err)
+			t.Errorf("ambiguity error should mention %q: %v", want, err)
+		}
+	}
+
+	_, err = pickZone("vm-1", []zoneInstance{{"us-central1-a", "STOPPING"}}, true)
+	if err == nil {
+		t.Fatal("want an error when the only instance is dying")
+	}
+	for _, want := range []string{"vm-1", "not usable", "us-central1-a=STOPPING"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("unusable error should mention %q: %v", want, err)
 		}
 	}
 }

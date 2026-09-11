@@ -33,12 +33,11 @@ type SSH struct {
 	client *ssh.Client
 }
 
-// DialSSH injects an ephemeral keypair into the instance's metadata, reads its
-// external IP, and dials SSH as user, retrying until reachable -- a fresh VM
-// accepts SSH only once sshd, the guest agent and the key have caught up. This
-// retry is the readiness check createvm skips. The host key is not verified: we
-// just created the VM, reach it only over its ephemeral IP, and it lives for
-// minutes, so there is no prior key to pin.
+// DialSSH injects an ephemeral keypair, reads the external IP and dials, retrying
+// until reachable -- a fresh VM accepts SSH only once sshd, the guest agent and
+// the key have caught up. This retry is the readiness check createvm skips. The
+// host key is not verified: we just made the VM, it lives for minutes, and there
+// is no prior key to pin.
 func (c *Client) DialSSH(ctx context.Context, zone, name, user string) (*SSH, error) {
 	signer, authorized, err := ephemeralKey()
 	if err != nil {
@@ -75,11 +74,10 @@ func (c *Client) DialSSH(ctx context.Context, zone, name, user string) (*SSH, er
 	return nil, fmt.Errorf("ssh to %s (%s) not ready after 3m: %w", name, addr, lastErr)
 }
 
-// dial bounds the handshake as well as the connect. ssh.Dial would not: it passes
-// Timeout to net.DialTimeout and then runs NewClientConn with no deadline, so a VM
-// whose sshd has bound the socket but is not yet answering accepts the connection
-// and stalls forever -- which is the very state the retry loop above exists to ride
-// out, and it would never get back there to retry.
+// dial bounds the handshake, not just the connect. ssh.Dial leaves NewClientConn
+// with no deadline, so a VM whose sshd has bound the socket but is not answering
+// stalls forever -- the exact state the retry loop above exists for, and it would
+// never get back there.
 func dial(addr string, cfg *ssh.ClientConfig) (*ssh.Client, error) {
 	conn, err := net.DialTimeout("tcp", addr, cfg.Timeout)
 	if err != nil {
@@ -103,10 +101,9 @@ func dial(addr string, cfg *ssh.ClientConfig) (*ssh.Client, error) {
 	return ssh.NewClient(c, chans, reqs), nil
 }
 
-// keepalive stops GCP from reaping the connection. x/crypto/ssh sends nothing on
-// its own, and a VPC drops an idle established flow after 10 minutes with no way
-// to tune it -- so a quiet stretch in the job (a long build, kind waiting on its
-// control plane) would kill the session and take the artifact pull with it.
+// keepalive stops GCP reaping the connection: a VPC drops an idle established flow
+// after 10 minutes, untunable, and x/crypto/ssh sends nothing itself. A quiet
+// stretch in the job would otherwise kill the session and the artifact pull with it.
 func keepalive(client *ssh.Client) {
 	t := time.NewTicker(60 * time.Second)
 	defer t.Stop()
@@ -313,11 +310,8 @@ func (s *SSH) GetDir(remoteDir, localDir string) error {
 		return err
 	}
 	if err := untar(stdout, localDir); err != nil {
-		// Drain before waiting. StdoutPipe requires the reader to keep reading; the
-		// remote tar is still writing, so abandoning the pipe fills the window, blocks
-		// it forever and hangs Wait. This path runs from runonvm's deferred --get,
-		// after the job reported its exit code, so a hang here looks like a job wedged
-		// at 100%.
+		// Drain first: abandoning the pipe while the remote tar writes blocks it
+		// forever, and Wait with it.
 		_, _ = io.Copy(io.Discard, stdout)
 		_ = sess.Wait()
 		return err

@@ -60,11 +60,9 @@ const PerZoneTimeout = 3 * time.Minute
 
 // Create inserts the instance in the first zone that accepts it and returns that
 // zone. The VM gets an external IP, cloud-platform scope, and a max-run-duration
-// GCP reclaims it at -- eventually: that reclaim is itself an operation, and one
-// observed DELETE sat PENDING behind the wedged insert it was meant to clean up.
-//
-// Every zone's error is reported, not just the last, since which zones were out of
-// capacity and which were never reached is what a CI log needs.
+// GCP reclaims it at -- eventually, since that reclaim is itself an operation and
+// can queue behind a wedged insert. Every zone's error is reported, not just the
+// last.
 func (c *Client) Create(ctx context.Context, cfg Config) (zone string, err error) {
 	if len(cfg.Zones) == 0 {
 		return "", fmt.Errorf("no zones configured")
@@ -167,9 +165,31 @@ func (c *Client) Delete(ctx context.Context, zone, name string) error {
 	return c.waitZoneOp(ctx, zone, op.Name)
 }
 
-// FindZone returns the zone an instance of this name lives in, or "" if none.
-// Lets a zone-agnostic cleanup delete a VM without carrying its zone.
+// FindZone returns the zone of an instance with this name in any state, or "" if
+// there is none. For cleanup: deletevm wants a TERMINATED VM too, since it is
+// stopped but still holding its disk.
 func (c *Client) FindZone(ctx context.Context, name string) (string, error) {
+	found, err := c.listInstances(ctx, name)
+	if err != nil {
+		return "", err
+	}
+	return pickZone(name, found, false)
+}
+
+// FindLiveZone returns the zone of a USABLE instance with this name. An instance
+// that is stopping, stopped or suspended is an error rather than a target -- for
+// a caller about to SSH in and run a job, that VM is not a place to run it, and
+// picking it would fail confusingly or, worse, half-work.
+func (c *Client) FindLiveZone(ctx context.Context, name string) (string, error) {
+	found, err := c.listInstances(ctx, name)
+	if err != nil {
+		return "", err
+	}
+	return pickZone(name, found, true)
+}
+
+// listInstances finds every instance of this name, across all zones.
+func (c *Client) listInstances(ctx context.Context, name string) ([]zoneInstance, error) {
 	// The value must be quoted -- an unquoted name with a - or . is a syntax error,
 	// not a non-match -- and AggregatedList pages even for a single match.
 	call := c.svc.Instances.AggregatedList(c.project).Filter(fmt.Sprintf("name=%q", name))
@@ -177,7 +197,7 @@ func (c *Client) FindZone(ctx context.Context, name string) (string, error) {
 	for {
 		agg, err := call.Context(ctx).Do()
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		for scope, list := range agg.Items {
 			// scope is "zones/<zone>".
@@ -191,7 +211,7 @@ func (c *Client) FindZone(ctx context.Context, name string) (string, error) {
 		}
 		call = call.PageToken(agg.NextPageToken)
 	}
-	return pickZone(name, found)
+	return found, nil
 }
 
 // zoneInstance is one instance of a given name, and where and how it is.
@@ -210,19 +230,13 @@ func goingAway(status string) bool {
 	return false
 }
 
-// pickZone chooses which instance of this name to act on.
+// pickZone chooses which instance of this name to act on. Names are only
+// zone-unique and Create can leave one behind, so two is possible; two LIVE ones
+// are refused rather than resolved by map order.
 //
-// Names are only zone-unique, and Create can leave a second behind: a zone whose
-// insert outlived PerZoneTimeout keeps its VM -- with a delete that may itself be
-// queued behind the wedged insert -- while the next zone succeeds. Picking by map
-// order would let deletevm reap one and leak the other, or runonvm run the job on
-// the VM createvm never reported.
-//
-// So prefer the live one, which resolves that case without guessing. Fall back to
-// a lone going-away instance rather than reporting nothing, since deletevm still
-// wants to reap a TERMINATED VM that is holding its disk. Genuine ambiguity --
-// two live instances -- is refused rather than resolved by coin flip.
-func pickZone(name string, found []zoneInstance) (string, error) {
+// requireLive is the caller's intent: a run step errors on a dying VM rather than
+// running a job on it, cleanup reaps either.
+func pickZone(name string, found []zoneInstance, requireLive bool) (string, error) {
 	var live, dying []zoneInstance
 	for _, zi := range found {
 		if goingAway(zi.status) {
@@ -231,17 +245,20 @@ func pickZone(name string, found []zoneInstance) (string, error) {
 			live = append(live, zi)
 		}
 	}
-	for _, set := range [][]zoneInstance{live, dying} {
-		switch len(set) {
-		case 0:
-			continue
-		case 1:
-			return set[0].zone, nil
-		default:
-			return "", fmt.Errorf("%s exists in more than one zone (%s); set ZONE to pick one", name, describe(set))
-		}
+	switch {
+	case len(live) > 1:
+		return "", fmt.Errorf("%s exists in more than one zone (%s); set ZONE to pick one", name, describe(live))
+	case len(live) == 1:
+		return live[0].zone, nil
+	case len(dying) == 0:
+		return "", nil // no instance of that name at all
+	case requireLive:
+		return "", fmt.Errorf("%s exists but is not usable (%s)", name, describe(dying))
+	case len(dying) > 1:
+		return "", fmt.Errorf("%s exists in more than one zone (%s); set ZONE to pick one", name, describe(dying))
+	default:
+		return dying[0].zone, nil
 	}
-	return "", nil
 }
 
 func describe(set []zoneInstance) string {

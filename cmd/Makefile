@@ -6,10 +6,6 @@ BINFMT_VERSION = $(shell yq -r '.tonistiigi-binfmt.version' ../images/calico-bin
 # qemu-user-static package version from Fedora
 QEMU_VERSION = $(shell yq -r '.qemu.version' ../images/calico-binfmt/versions.yaml)
 
-# scratch-utils is deliberately NOT here: `build` is a prerequisite of
-# calico-go-build-image and calico-binfmt-image, and those images contain neither
-# the binary nor its ~20 GCP/gRPC/OTel modules. calico-scratch-utils-image asks
-# for scratch-utils-build instead.
 .PHONY: build
 build: bin/binfmt-$(ARCH) bin/semvalidator-$(ARCH)
 

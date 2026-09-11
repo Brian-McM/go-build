@@ -18,9 +18,6 @@ global_job_config:
     commands:
       - echo $DOCKER_TOKEN | docker login --username "$DOCKER_USER" --password-stdin
       - checkout
-      # As calico-go-build.yml does, except the tag carries a scratch-utils-
-      # prefix to keep it out of the go-build release namespace -- strip it so the
-      # image tag is v0.4, not scratch-utils-v0.4.
       - |
         if [ "${SEMAPHORE_GIT_REF_TYPE}" = "tag" ]; then
           export BRANCH_NAME=${SEMAPHORE_GIT_TAG_NAME#scratch-utils-}

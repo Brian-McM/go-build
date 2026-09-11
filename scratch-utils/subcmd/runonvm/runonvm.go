@@ -91,7 +91,7 @@ func run(ctx context.Context) int {
 
 	zone := os.Getenv("ZONE")
 	if zone == "" {
-		zone, err = client.FindZone(setupCtx, name)
+		zone, err = client.FindLiveZone(setupCtx, name)
 		if err != nil || zone == "" {
 			fmt.Fprintf(os.Stderr, "runonvm: could not find zone for %s (set ZONE): %v\n", name, err)
 			return 1
@@ -199,9 +199,7 @@ func run(ctx context.Context) int {
 		fmt.Fprintf(os.Stderr, "runonvm: upload script: %v\n", err)
 		return 1
 	}
-	// Quoted like every other remote path: remoteScript is path.Base of a
-	// caller-supplied --script, so a space would split the command and report
-	// "No such file or directory" after the upload already succeeded.
+
 	qScript := util.ShellQuote(remoteScript)
 	runCmd := "bash " + qScript
 	if haveEnv {
@@ -219,9 +217,9 @@ func run(ctx context.Context) int {
 
 // splitPair splits "A:B" on the first colon.
 func splitPair(s string) (a, b string, ok bool) {
-	i := strings.IndexByte(s, ':')
-	if i < 0 {
+	before, after, ok := strings.Cut(s, ":")
+	if !ok {
 		return "", "", false
 	}
-	return s[:i], s[i+1:], true
+	return before, after, true
 }

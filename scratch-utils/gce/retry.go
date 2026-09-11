@@ -19,9 +19,8 @@ var retryBackoff = time.Second
 
 // retry runs fn with exponential backoff on transient errors -- GCE control-plane
 // calls occasionally drop the HTTP/2 connection or return a 429/5xx. Permanent
-// errors return at once. Every error is wrapped with what, the permanent one
-// included: callers pass their whole message there ("get instance vm-1"), so a
-// bare return would leave a 404 with nothing identifying the call.
+// errors return at once. Every error is wrapped with what, including those, or a
+// 404 would arrive with nothing identifying the call.
 func retry(ctx context.Context, what string, fn func() error) error {
 	const attempts = 4
 	backoff := retryBackoff

@@ -8,16 +8,12 @@ import (
 	"strings"
 )
 
-// ShellQuote single-quotes s for a POSIX shell: an embedded apostrophe is closed,
-// backslash-escaped and reopened, so any value survives verbatim. The literal
-// escape appears only in the code below, because gofmt reformats DOC comments
-// (Go 1.19+) and applies godoc's old quoting convention, turning a doubled
-// apostrophe into a right curly quote. Plain comments inside a function body are
-// left alone; this one is attached to a declaration, so it is not.
+// ShellQuote single-quotes s for a POSIX shell, so any value survives verbatim.
+// Use it, never fmt %q, for anything going into a remote command: %q is
+// double-quoted, and bash still expands $(...) inside double quotes.
 //
-// Use this, never fmt %q, for anything interpolated into a remote command. %q
-// emits a Go double-quoted string, and bash still expands $(...) and backticks
-// inside double quotes, so a path like /tmp/x$(id -u) would execute.
+// The escape itself is only in the code below -- gofmt rewrites a doubled
+// apostrophe in a doc comment into a curly quote.
 func ShellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

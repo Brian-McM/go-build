@@ -8,15 +8,6 @@ agent:
 execution_time_limit:
   minutes: 30
 
-# Auto-promoted from promotions/calico-go-build.yml on a release tag, so the VM
-# image tracks the go-build image it bakes; also promotable by hand for a one-off.
-# The work runs on a throwaway builder VM (see vm-images/ci-base/build-image.sh);
-# this agent just drives gcloud. The image lives in a family, so createvm always
-# gets the newest.
-#
-# The baked toolchain is pinned: Go and calico/go-build from
-# images/calico-go-build/versions.yaml, kind/gh from vm-images/ci-base/versions.yaml. Re-run
-# after bumping either.
 global_job_config:
   env_vars:
     - name: PROJECT
@@ -25,8 +16,6 @@ global_job_config:
       value: us-central1-a
     - name: FAMILY
       value: ci-base
-  # Same secret the projectcalico/calico GCE jobs use. Needs compute instance +
-  # image create/delete in PROJECT.
   secrets:
     - name: google-service-account-for-gce
   prologue:
@@ -42,10 +31,6 @@ blocks:
   - name: Build ci-base VM image
     dependencies: []
     run:
-      # Same gate as calico-go-build.yml's blocks. auto_promote does not restrict a
-      # MANUAL promotion, so without this anyone could promote from a PR and spend a
-      # builder VM on a branch-named image; on a PR the branch is pull-request-N, so
-      # neither side matches and the block is skipped.
       when: "branch = 'master' OR tag =~ '^1\\.\\d+\\.\\d+-llvm\\d+(\\.\\d+){2}-k8s1\\.\\d+\\.\\d+'"
     task:
       jobs:
