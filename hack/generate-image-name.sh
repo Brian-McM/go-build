@@ -11,16 +11,22 @@
 # -m caps it lower: GKE allows 39 for a secondary boot disk and only enforces that
 # when a node pool attaches the image, long after it built.
 #
-# A tag build is one release, so its name is the tag and it joins the release
-# family. A branch build recurs, so its name carries the commit to stay unique --
-# nothing is ever deleted to make room -- and it joins a per-branch family, which
-# moves to the newest by itself. Keeping the families apart is what stops a master
-# build becoming what the release family resolves to.
+# A tag build is one release, so its name is the tag. A branch build recurs, so its
+# name carries the commit to stay unique -- nothing is ever deleted to make room.
 #
-#   tag    ci-base-1-27-1-llvm21-1-8-k8s1-37-0   family ci-base
+# -F prints the FAMILY instead, which moves to its newest member on its own.
+# Release families are per toolchain version, not one shared bucket: a family
+# resolves by creation time, not by version, and release lines interleave -- a
+# 1.26 patch cut after a 1.27 release would otherwise make the shared family
+# resolve to the older Go. The version half drops the llvm/k8s words since
+# position already says which is which.
+#
+#   tag    ci-base-1-27-1-llvm21-1-8-k8s1-37-0   family ci-base-1-27-1-21-1-8-1-37-0
 #   master ci-base-master-9cc1214                family ci-base-master
 #
-# -F prints the family for this build instead of the name.
+# The family comes from versions.yaml rather than the git tag, so a re-release
+# (-1, -2) lands in the same family and just moves the pointer -- the tag carries
+# that suffix, versions.yaml never does.
 #
 #   generate-image-name.sh -p ci-base [-f versions.yaml] [-m 39] [-F]
 
@@ -53,6 +59,13 @@ if [[ -z $prefix ]]; then
     exit 1
 fi
 
+# Fold to a legal RFC1035 tail: no runs of hyphens, none leading or trailing.
+fold_name() {
+    echo "$1" |
+        tr '[:upper:]' '[:lower:]' |
+        sed -e 's/[^a-z0-9-]/-/g' -e 's/--*/-/g' -e 's/^-//' -e 's/-$//'
+}
+
 here="$(cd "$(dirname "$0")" && pwd)"
 : "${ver_file:=$here/../images/calico-go-build/versions.yaml}"
 
@@ -69,10 +82,7 @@ else
     version="$("$here/generate-version-tag-name.sh" -f "$ver_file")" # detached HEAD
 fi
 
-# Fold to a legal RFC1035 tail: no runs of hyphens, none leading or trailing.
-version="$(echo "$version" |
-    tr '[:upper:]' '[:lower:]' |
-    sed -e 's/[^a-z0-9-]/-/g' -e 's/--*/-/g' -e 's/^-//' -e 's/-$//')"
+version="$(fold_name "$version")"
 
 if [[ -z $version ]]; then
     echo "version/branch reduced to an empty string" >&2
@@ -80,12 +90,22 @@ if [[ -z $version ]]; then
 fi
 
 if [[ $want_family == true ]]; then
-    # Releases share one family; each branch gets its own.
     if [[ $is_tag == true ]]; then
-        echo "$prefix"
-    else
-        echo "${prefix}-${version}"
+        # From versions.yaml, not the tag: excludes the re-release suffix.
+        base="$("$here/generate-version-tag-name.sh" -f "$ver_file")"
+        version="$(echo "${base//llvm/}" | sed 's/k8s//g')"
+        version="$(fold_name "$version")"
     fi
+    family="${prefix}-${version}"
+    if [[ ${#family} -gt 63 ]]; then
+        echo "family is ${#family} characters, over the RFC1035 limit of 63: $family" >&2
+        exit 1
+    fi
+    if ! [[ $family =~ ^[a-z]([-a-z0-9]*[a-z0-9])?$ ]]; then
+        echo "not a valid GCE family name: $family" >&2
+        exit 1
+    fi
+    echo "$family"
     exit 0
 fi
 
