@@ -252,7 +252,18 @@ func acceptOneOf(keys []ssh.PublicKey) ssh.HostKeyCallback {
 
 // hostKeys reads the instance's SSH host keys from its guest attributes. Read
 // through the compute API rather than off the wire: that is an authenticated TLS
-// channel, which is the whole reason pinning to the result means anything.
+// channel, which is what makes pinning to the result mean anything.
+//
+// What this does and does not buy, precisely. Guest attributes are writable by
+// anything on the VM that can reach the metadata server, so what comes back is
+// what the VM said about itself, relayed by the control plane -- not an
+// independent attestation. That is enough for the attacker this defends against,
+// a machine-in-the-middle on the path to the external IP: it cannot write the
+// VM's attributes and cannot forge the API's response, so it cannot produce a key
+// we will accept. It is no defence against a VM that is already compromised, and
+// does not need to be -- that attacker is already the far end of the session and
+// already receives everything runonvm ships. Code on the VM overwriting its own
+// published keys only breaks the next connection to itself.
 //
 // The guest agent writes them after boot, so this is not available the moment the
 // insert reaches DONE -- absent counts as not-ready and is retried.
