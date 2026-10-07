@@ -29,6 +29,12 @@ import (
 	"github.com/projectcalico/go-build/scratch-utils/util"
 )
 
+// vmReadyTimeout bounds each wait for a freshly created VM to become usable.
+// createvm deliberately returns as soon as the insert is DONE -- readiness is this
+// step's job -- so a VM here is routinely still booting, and everything that has
+// to be true before a session opens gets this long to become true.
+const vmReadyTimeout = 3 * time.Minute
+
 // SSH is a live connection to a VM. Close it when done.
 type SSH struct {
 	client *ssh.Client
@@ -58,7 +64,7 @@ func (c *Client) DialSSH(ctx context.Context, zone, name, user string) (*SSH, er
 	}
 	addr := net.JoinHostPort(ip, "22")
 
-	deadline := time.Now().Add(3 * time.Minute)
+	deadline := time.Now().Add(vmReadyTimeout)
 	var lastErr error
 	for time.Now().Before(deadline) {
 		client, err := dial(addr, cfg)
@@ -73,7 +79,7 @@ func (c *Client) DialSSH(ctx context.Context, zone, name, user string) (*SSH, er
 		case <-time.After(5 * time.Second):
 		}
 	}
-	return nil, fmt.Errorf("ssh to %s (%s) not ready after 3m: %w", name, addr, lastErr)
+	return nil, fmt.Errorf("ssh to %s (%s) not ready after %s: %w", name, addr, vmReadyTimeout, lastErr)
 }
 
 // dial bounds the handshake, not just the connect. ssh.Dial leaves NewClientConn
@@ -199,9 +205,26 @@ func (c *Client) pinHostKeys(ctx context.Context, zone, name string, cfg *ssh.Cl
 		cfg.HostKeyCallback = ssh.InsecureIgnoreHostKey() //nolint:gosec // deliberate opt-out, see insecureHostKeyEnv
 		return nil
 	}
-	keys, err := c.hostKeys(ctx, zone, name)
-	if err != nil {
-		return fmt.Errorf("%w (set %s=true to connect without verifying it)", err, insecureHostKeyEnv)
+	// Waited for on the same budget as the dial below, not just retry's four
+	// attempts: those span seconds, and a booting VM publishes its keys tens of
+	// seconds in. Too short a wait here would fail runs that used to succeed,
+	// because the dial loop was previously the only thing waiting for the VM.
+	deadline := time.Now().Add(vmReadyTimeout)
+	var keys []ssh.PublicKey
+	var err error
+	for {
+		keys, err = c.hostKeys(ctx, zone, name)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, errNotReady) || !time.Now().Before(deadline) {
+			return fmt.Errorf("%w (set %s=true to connect without verifying it)", err, insecureHostKeyEnv)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(5 * time.Second):
+		}
 	}
 	// Host key algorithms are left alone: RFC 8332 keeps the public key blob
 	// identical under rsa-sha2-*, changing only the signature algorithm, so a
