@@ -348,3 +348,80 @@ func TestPutCommandQuotesHostilePaths(t *testing.T) {
 		t.Error("command substitution in the path executed")
 	}
 }
+
+// A destination that is already a directory must fail, not quietly absorb the
+// payload. `mv -f` would move the staging file *into* it under the staging name and
+// exit 0, so the upload reported success having written no such file; the shell
+// redirection this replaced failed with "Is a directory", and that is the behaviour
+// to keep.
+func TestPutCommandRejectsADirectoryDestination(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "iam-a-dir")
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("bash", "-c", putCommand(dest, 0o600))
+	cmd.Stdin = strings.NewReader("payload")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected failure writing over a directory, got success: %s", out)
+	}
+
+	// Nothing may have been smuggled inside, and no staging file left behind.
+	entries, readErr := os.ReadDir(dest)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if len(entries) != 0 {
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		t.Errorf("payload landed inside the directory: %v", names)
+	}
+	parent, readErr := os.ReadDir(dir)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if len(parent) != 1 {
+		t.Errorf("staging file left behind beside the destination: %d entries", len(parent))
+	}
+}
+
+// A symlink at the destination must be replaced, not written through: following it
+// would hand a secret to whatever the link names.
+func TestPutCommandReplacesASymlinkDestination(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	dir := t.TempDir()
+	outside := filepath.Join(dir, "outside.txt")
+	if err := os.WriteFile(outside, []byte("victim"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(dir, "link")
+	if err := os.Symlink(outside, dest); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("bash", "-c", putCommand(dest, 0o600))
+	cmd.Stdin = strings.NewReader("s3cret")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("running putCommand: %v: %s", err, out)
+	}
+
+	if fi, err := os.Lstat(dest); err != nil {
+		t.Fatal(err)
+	} else if fi.Mode()&os.ModeSymlink != 0 {
+		t.Error("destination is still a symlink; the payload was written through it")
+	}
+	if got, err := os.ReadFile(outside); err != nil {
+		t.Fatal(err)
+	} else if string(got) != "victim" {
+		t.Errorf("the symlink's target was overwritten: %q", got)
+	}
+}
