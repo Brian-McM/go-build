@@ -68,10 +68,19 @@ for img in $CONTAINER_IMAGES; do args+=(--container-image="$img"); done
 # two builds sharing a job name collide on those resources in the same project and
 # zone even when their output images differ. Left unset the CLI calls every job
 # "secondary-disk-image", which is exactly that case. The output image name is
-# already unique per build, so derive from it. The CLI caps the job name below 50
-# characters and requires RFC1035, so trim and strip any trailing hyphen the trim
-# leaves behind -- IMAGE_NAME is 39 at most by default, but it is overridable.
-JOB_NAME="${JOB_NAME:-$(printf '%.49s' "$IMAGE_NAME" | sed 's/-*$//')}"
+# already unique per build, so use it.
+#
+# Not truncated to fit the CLI's sub-50 limit: two long names trimmed to the same
+# prefix would converge and bring the collision back, silently, which is the bug
+# this is here to remove. The default name is 39 characters at most, so this only
+# concerns a deliberate override, and that override can say what it wants.
+JOB_NAME="${JOB_NAME:-$IMAGE_NAME}"
+if [ "${#JOB_NAME}" -ge 50 ]; then
+  echo "job name '$JOB_NAME' is ${#JOB_NAME} characters; the builder's limit is 49." >&2
+  echo "set JOB_NAME to something unique and shorter -- it names the builder's" >&2
+  echo "scratch VM and disk, so two concurrent builds must not share one." >&2
+  exit 1
+fi
 args+=(--job-name="$JOB_NAME")
 
 # Release images are immutable; branch images are replaced. A pool stores the image

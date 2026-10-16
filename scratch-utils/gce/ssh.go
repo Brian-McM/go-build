@@ -249,6 +249,12 @@ func (s *SSH) PutData(data []byte, remote string, mode os.FileMode) error {
 // at 0600, so the content is never exposed, and mv within one directory is atomic, so
 // no reader sees a half-written secret. The trap removes the staging file if any step
 // fails, and is cleared once the move has happened.
+//
+// -T is load-bearing. Plain `mv -f tmp dir` moves the payload *into* an existing
+// directory under its staging name and exits 0, so PutData would report success
+// having created no such file -- the redirection this replaced failed with "Is a
+// directory". -T also replaces a destination symlink instead of writing through it.
+// GNU coreutils, which is what the VM runs.
 func putCommand(remote string, mode os.FileMode) string {
 	// Single-quoted, not %q: %q is double-quoted, and bash expands $(...) inside
 	// double quotes, so a crafted remote path would execute on the VM.
@@ -256,7 +262,7 @@ func putCommand(remote string, mode os.FileMode) string {
 	qd := util.ShellQuote(filepath.Dir(remote))
 	return fmt.Sprintf(
 		`mkdir -p %s && t="$(mktemp %s/.put.XXXXXX)" && trap 'rm -f "$t"' EXIT && `+
-			`cat > "$t" && chmod %o "$t" && mv -f "$t" %s && trap - EXIT`,
+			`cat > "$t" && chmod %o "$t" && mv -fT -- "$t" %s && trap - EXIT`,
 		qd, qd, mode.Perm(), q)
 }
 
