@@ -128,9 +128,7 @@ func tarWith(t *testing.T, name, content string) []byte {
 	return buf.Bytes()
 }
 
-// A symlink under the uploaded tree used to abort the whole upload: the header went
-// out as a zero-length TypeSymlink and the body copy then hit "write too long", so
-// one link in a vendor or node_modules directory failed the job before it started.
+// One symlink under the tree used to abort the whole upload with "write too long".
 func TestTarDirShipsSymlinksAsLinks(t *testing.T) {
 	src := t.TempDir()
 	if err := os.WriteFile(filepath.Join(src, "real.txt"), []byte("hello"), 0o644); err != nil {
@@ -139,7 +137,7 @@ func TestTarDirShipsSymlinksAsLinks(t *testing.T) {
 	if err := os.Symlink("real.txt", filepath.Join(src, "link.txt")); err != nil {
 		t.Fatal(err)
 	}
-	// A link with no target at all: open would fail, so only the header may be read.
+	// Dangling: open would fail, so only the header may be read.
 	if err := os.Symlink("nowhere.txt", filepath.Join(src, "dangling.txt")); err != nil {
 		t.Fatal(err)
 	}
@@ -187,10 +185,8 @@ func TestTarDirShipsSymlinksAsLinks(t *testing.T) {
 	}
 }
 
-// A symlink already sitting in the destination is not something the lexical check
-// could see: "logs/file" is inside destDir as a string, but writing it followed the
-// link out of the tree. The root refuses to traverse out, so the file outside stays
-// as it was.
+// "logs/file" is inside destDir as a string, but writing it followed a pre-existing
+// destDir/logs symlink out of the tree.
 func TestUntarWillNotWriteThroughADestinationSymlink(t *testing.T) {
 	base := t.TempDir()
 	dst := filepath.Join(base, "dest")
@@ -221,15 +217,14 @@ func TestUntarWillNotWriteThroughADestinationSymlink(t *testing.T) {
 	}
 }
 
-// The old containment check compared against destDir exactly as spelled, so any
-// spelling that was not already clean rejected its own contents.
+// The old check compared against destDir as spelled, so any unclean spelling
+// rejected its own contents.
 func TestUntarAcceptsEquivalentDestinationSpellings(t *testing.T) {
 	for _, dest := range []string{"artifacts", "./artifacts", "nested/./artifacts", "."} {
 		base := t.TempDir()
 		t.Chdir(base)
 
-		// "." is what `tar czf - -C dir .` puts first; it must not be mistaken for an
-		// entry trying to escape.
+		// "." is what `tar czf - -C dir .` puts first, and is not an escape.
 		var buf bytes.Buffer
 		gz := gzip.NewWriter(&buf)
 		tw := tar.NewWriter(gz)
@@ -266,9 +261,8 @@ func TestUntarAcceptsEquivalentDestinationSpellings(t *testing.T) {
 	}
 }
 
-// putCommand is a shell string run on the VM, so the only real check is to run it.
-// bash here stands in for the remote shell; what matters is that the destination
-// never exists at a wider mode than asked for, including over an existing 0644 file.
+// putCommand is a shell string, so the only real check is to run it. The destination
+// must never exist at a wider mode than asked for, including over an existing 0644.
 func TestPutCommandNeverWidensTheDestination(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")
@@ -315,7 +309,7 @@ func TestPutCommandNeverWidensTheDestination(t *testing.T) {
 			if string(got) != "s3cret" {
 				t.Errorf("content = %q", got)
 			}
-			// The staging file must not be left behind next to the destination.
+			// No staging file left behind.
 			entries, err := os.ReadDir(filepath.Dir(dest))
 			if err != nil {
 				t.Fatal(err)
@@ -349,11 +343,8 @@ func TestPutCommandQuotesHostilePaths(t *testing.T) {
 	}
 }
 
-// A destination that is already a directory must fail, not quietly absorb the
-// payload. `mv -f` would move the staging file *into* it under the staging name and
-// exit 0, so the upload reported success having written no such file; the shell
-// redirection this replaced failed with "Is a directory", and that is the behaviour
-// to keep.
+// A directory destination must fail, not absorb the payload: `mv -f` moved the
+// staging file into it and exited 0, where the old redirection said "Is a directory".
 func TestPutCommandRejectsADirectoryDestination(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")
@@ -371,7 +362,7 @@ func TestPutCommandRejectsADirectoryDestination(t *testing.T) {
 		t.Fatalf("expected failure writing over a directory, got success: %s", out)
 	}
 
-	// Nothing may have been smuggled inside, and no staging file left behind.
+	// Nothing smuggled inside, nothing left behind.
 	entries, readErr := os.ReadDir(dest)
 	if readErr != nil {
 		t.Fatal(readErr)
@@ -392,8 +383,8 @@ func TestPutCommandRejectsADirectoryDestination(t *testing.T) {
 	}
 }
 
-// A symlink at the destination must be replaced, not written through: following it
-// would hand a secret to whatever the link names.
+// A destination symlink must be replaced, not written through -- following it would
+// hand the secret to whatever the link names.
 func TestPutCommandReplacesASymlinkDestination(t *testing.T) {
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash not available")

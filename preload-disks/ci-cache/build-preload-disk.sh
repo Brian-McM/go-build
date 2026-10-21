@@ -64,16 +64,10 @@ args=(
 )
 for img in $CONTAINER_IMAGES; do args+=(--container-image="$img"); done
 
-# The builder names its scratch VM and disk after the job, with ExactName set, so
-# two builds sharing a job name collide on those resources in the same project and
-# zone even when their output images differ. Left unset the CLI calls every job
-# "secondary-disk-image", which is exactly that case. The output image name is
-# already unique per build, so use it.
-#
-# Not truncated to fit the CLI's sub-50 limit: two long names trimmed to the same
-# prefix would converge and bring the collision back, silently, which is the bug
-# this is here to remove. The default name is 39 characters at most, so this only
-# concerns a deliberate override, and that override can say what it wants.
+# The builder names its scratch VM and disk after the job with ExactName set, so
+# concurrent builds sharing one collide; unset, the CLI names every job the same.
+# Not truncated to the CLI's sub-50 limit: two trimmed long names would converge and
+# collide again. The default is 39 at most, so only an override has to care.
 JOB_NAME="${JOB_NAME:-$IMAGE_NAME}"
 if [ "${#JOB_NAME}" -ge 50 ]; then
   echo "job name '$JOB_NAME' is ${#JOB_NAME} characters; the builder's limit is 49." >&2

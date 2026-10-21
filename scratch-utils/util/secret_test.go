@@ -113,9 +113,8 @@ func TestSetupComputeADCErrorsWhenTheEnvVarIsMissing(t *testing.T) {
 	}
 }
 
-// os.WriteFile applies its mode only when it creates the file, so writing a secret
-// over an existing world-readable path left it world-readable -- the helper's whole
-// contract is that it does not.
+// os.WriteFile applies its mode only on create, so a secret written over an existing
+// world-readable path stayed readable.
 func TestLocalSecretTightensAnExistingPermissiveFile(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "token")
 	if err := os.WriteFile(dest, []byte("stale"), 0o644); err != nil {
@@ -146,7 +145,7 @@ func TestLocalSecretTightensAnExistingPermissiveFile(t *testing.T) {
 		t.Errorf("content = %q, want %q", got, "fresh")
 	}
 
-	// The staging file must not survive next to the secret.
+	// No staging file left beside the secret.
 	entries, err := os.ReadDir(filepath.Dir(dest))
 	if err != nil {
 		t.Fatal(err)

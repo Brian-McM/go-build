@@ -98,8 +98,8 @@ func TestRequiresAnImageOrAFamily(t *testing.T) {
 	}
 }
 
-// Each failing zone costs its attempt plus the synchronous cleanup that follows it.
-// Budgeting only the attempt meant the last of four zones was never tried.
+// Each failing zone costs its attempt plus the cleanup after it; budgeting only the
+// attempt meant the last of four zones was never tried.
 func TestOverallTimeoutLeavesEveryZoneAFullAttempt(t *testing.T) {
 	perZone := gce.PerZoneTimeout + gce.CleanupTimeout
 	for _, zones := range []int{1, 2, 3, 4, 8} {
@@ -108,8 +108,7 @@ func TestOverallTimeoutLeavesEveryZoneAFullAttempt(t *testing.T) {
 			t.Errorf("zones=%d: budget %v is under %v, so the last zone can be skipped", zones, got, min)
 		}
 	}
-	// The default zone list, spelled out: four zones that each burn the full
-	// attempt-plus-cleanup must still all be reached.
+	// The default four zones, spelled out.
 	if got, want := overallTimeout(4), 4*(3*time.Minute+2*time.Minute); got < want {
 		t.Errorf("four zones: %v < %v", got, want)
 	}

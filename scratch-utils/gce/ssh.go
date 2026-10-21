@@ -241,20 +241,13 @@ func (s *SSH) PutData(data []byte, remote string, mode os.FileMode) error {
 	return nil
 }
 
-// putCommand writes stdin to remote at mode, via a 0600 staging file in the same
-// directory. Writing remote directly would create it at the shell's umask -- 0644 by
-// default -- and only narrow it after the bytes had landed, so a secret was readable
-// by every user on the VM for the length of the upload; an existing 0644 destination
-// stayed readable too, since cat truncates without touching the mode. mktemp creates
-// at 0600, so the content is never exposed, and mv within one directory is atomic, so
-// no reader sees a half-written secret. The trap removes the staging file if any step
-// fails, and is cleared once the move has happened.
+// putCommand writes stdin to remote at mode, staged through a 0600 mktemp file in the
+// same directory. Writing remote directly creates it at the shell's umask and narrows
+// it only afterwards, exposing a secret for the length of the upload.
 //
-// -T is load-bearing. Plain `mv -f tmp dir` moves the payload *into* an existing
-// directory under its staging name and exits 0, so PutData would report success
-// having created no such file -- the redirection this replaced failed with "Is a
-// directory". -T also replaces a destination symlink instead of writing through it.
-// GNU coreutils, which is what the VM runs.
+// -T is load-bearing: plain `mv -f tmp dir` moves the payload *into* an existing
+// directory and exits 0. It also replaces a destination symlink rather than writing
+// through it. GNU coreutils, which is what the VM runs.
 func putCommand(remote string, mode os.FileMode) string {
 	// Single-quoted, not %q: %q is double-quoted, and bash expands $(...) inside
 	// double quotes, so a crafted remote path would execute on the VM.
@@ -355,10 +348,8 @@ func tarDir(dir string, w io.Writer) error {
 		if rel == "." {
 			return nil
 		}
-		// Walk lstats, so a symlink arrives as a symlink. Its target has to go in the
-		// header: FileInfoHeader with an empty link name writes a TypeSymlink entry
-		// of size 0, and the body copy below then fails with "write too long" -- one
-		// symlink anywhere under the tree aborted the whole upload.
+		// Walk lstats, so the link target must reach the header: an empty link name
+		// writes a size-0 TypeSymlink that the body copy below then overflows.
 		var link string
 		if info.Mode()&os.ModeSymlink != 0 {
 			if link, err = os.Readlink(path); err != nil {
@@ -373,8 +364,7 @@ func tarDir(dir string, w io.Writer) error {
 		if err := tw.WriteHeader(hdr); err != nil {
 			return err
 		}
-		// Only a regular file has a body. Dirs and symlinks are the header alone, and
-		// anything else (socket, device, fifo) has nothing meaningful to ship.
+		// Only regular files have a body; a socket or device has nothing to ship.
 		if !info.Mode().IsRegular() {
 			return nil
 		}
@@ -410,14 +400,10 @@ func untar(r io.Reader, destDir string) error {
 		}
 		return err
 	}
-	// Every write goes through a root anchored at destDir. The lexical check this
-	// replaces compared the joined path against destDir as spelled, which got both
-	// halves wrong: it rejected valid destinations ("./artifacts" never equals the
-	// cleaned "artifacts", and "." rejected ordinary files), and it could not see
-	// through a symlink already sitting in destDir -- an entry "logs/file" where
-	// destDir/logs pointed elsewhere passed the check and then wrote outside. A root
-	// refuses to traverse a link leading out of it, so containment is the kernel's
-	// answer rather than ours, with no window between checking and opening.
+	// Rooted at destDir. The lexical check this replaces compared against destDir as
+	// spelled, so it rejected valid destinations ("./artifacts" never equals the
+	// cleaned "artifacts") and could not see through a symlink already in destDir. A
+	// root refuses to traverse out, with no window between checking and opening.
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
 		return err
 	}
@@ -436,9 +422,7 @@ func untar(r io.Reader, destDir string) error {
 		if err != nil {
 			return err
 		}
-		// Relative to the root, so how destDir was spelled stops mattering. A leading
-		// "/" or any ".." is folded away here; anything still pointing out is the
-		// root's problem, not ours.
+		// Relative to the root, so destDir's spelling stops mattering.
 		name := strings.TrimPrefix(path.Clean("/"+hdr.Name), "/")
 		if name == "" {
 			// The archive's own root entry, which tar writes as "." or "./".

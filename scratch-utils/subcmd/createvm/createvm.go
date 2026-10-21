@@ -142,12 +142,9 @@ func parseDiskGB(s string) (int64, error) {
 	return n, nil
 }
 
-// overallTimeout budgets every zone a full attempt. A zone that times out then
-// deletes the abandoned VM synchronously on its own context, so it costs
-// PerZoneTimeout + CleanupTimeout before the next zone is tried -- counting only
-// PerZoneTimeout meant two slow zones could exhaust the deadline and leave the last
-// zone unattempted, with the fallback present but unreachable. The extra minute
-// covers the client setup and the final zone's own bookkeeping.
+// overallTimeout budgets every zone a full attempt. A timed-out zone then deletes the
+// abandoned VM synchronously, so it costs PerZoneTimeout + CleanupTimeout; counting
+// only the former left the last zone unattempted. The minute covers client setup.
 func overallTimeout(zones int) time.Duration {
 	return time.Duration(zones)*(gce.PerZoneTimeout+gce.CleanupTimeout) + time.Minute
 }

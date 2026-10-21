@@ -27,11 +27,9 @@ func LocalSecret(name, destPath string) (found bool, err error) {
 	return true, nil
 }
 
-// writePrivate writes data to destPath at 0600, whether or not destPath already
-// exists. os.WriteFile applies its mode only when it creates the file, so writing a
-// secret over an existing 0644 path left it readable by everyone -- the helper
-// promised a private file and silently did not deliver one. Staging in the
-// destination directory keeps the rename atomic and on the same filesystem.
+// writePrivate writes data to destPath at 0600 even when destPath already exists.
+// os.WriteFile applies its mode only on create, so a secret written over an existing
+// 0644 path stayed readable. CreateTemp is 0600 regardless of umask.
 func writePrivate(destPath string, data []byte) error {
 	f, err := os.CreateTemp(filepath.Dir(destPath), "."+filepath.Base(destPath)+".tmp")
 	if err != nil {
@@ -44,11 +42,6 @@ func writePrivate(destPath string, data []byte) error {
 		return err
 	}
 	if err := f.Close(); err != nil {
-		return err
-	}
-	// CreateTemp already makes it 0600; this is belt and braces against a umask
-	// change and states the intent at the point it matters.
-	if err := os.Chmod(tmp, 0o600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, destPath)
